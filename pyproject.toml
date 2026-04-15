@@ -1,0 +1,45 @@
+[project]
+name = "llm-api-compat-test-suite"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+index-url = "https://pypi.apple.com/simple/"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.408",
+    "ruff>=0.15.10",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "S",     # flake8-bandit (security)
+    "A",     # flake8-builtins
+    "RET",   # flake8-return
+    "C90",   # mccabe (cyclomatic complexity)
+    "ERA",   # eradicator (commented-out code)
+    "T20",   # flake8-print
+    "PTH",   # flake8-use-pathlib
+    "ASYNC", # flake8-async
+]
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
