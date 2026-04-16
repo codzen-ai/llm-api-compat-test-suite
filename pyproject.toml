@@ -1,10 +1,15 @@
 [project]
 name = "llm-api-compat-test-suite"
 version = "0.1.0"
-description = "Add your description here"
+description = "Test suite for verifying third-party LLM API compatibility with OpenAI, Anthropic, and Gemini APIs"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "httpx>=0.28",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "pytest>=8.0",
+]
 
 [tool.uv]
 index-url = "https://pypi.apple.com/simple/"
@@ -40,6 +45,30 @@ select = [
     "ASYNC", # flake8-async
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "TCH"]  # assert + runtime fixture imports in tests
+"unit_tests/**/*.py" = ["S101", "TCH"]
+"conftest.py" = ["S101", "T201"]   # assert + print in conftest
+
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
+
+# Tests work with dynamic JSON — suppress Unknown propagation from dict[str, Any]
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+
+[[tool.pyright.executionEnvironments]]
+root = "unit_tests"
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "unit_tests"]
+markers = [
+    "capability(name): test requires specific model capability (chat, streaming, tools, vision, embeddings)",
+]

@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Test reports
+reports/
+
+# Config with secrets
+config.yaml
