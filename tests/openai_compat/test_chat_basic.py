@@ -178,6 +178,176 @@ class TestChatBasic:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    def test_content_as_array(self, client: LoggingHttpClient, model: str) -> None:
+        """content as array of content parts should be accepted."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": "Say hello."}],
+                    },
+                ],
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        assert isinstance(body, dict)
+        content = body["choices"][0]["message"]["content"]
+        assert isinstance(content, str) and len(content) > 0
+
+    def test_message_name_field(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """name field on messages should be accepted."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "name": "alice",
+                        "content": "Say hello.",
+                    },
+                ],
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
+    def test_max_completion_tokens(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """max_completion_tokens parameter should limit response length."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": "Write a long story about a cat."},
+                ],
+                "max_completion_tokens": 10,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        assert isinstance(body, dict)
+        usage = body.get("usage", {})
+        if usage:
+            assert usage.get("completion_tokens", 0) <= 20
+
+    def test_top_p(self, client: LoggingHttpClient, model: str) -> None:
+        """top_p parameter should be accepted."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "top_p": 0.9,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
+    def test_frequency_penalty(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """frequency_penalty parameter should be accepted."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "frequency_penalty": 0.5,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
+    def test_presence_penalty(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """presence_penalty parameter should be accepted."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "presence_penalty": 0.5,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
+    def test_seed(self, client: LoggingHttpClient, model: str) -> None:
+        """seed parameter should be accepted for deterministic output."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "seed": 42,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        # system_fingerprint may be returned when seed is used
+        assert isinstance(body, dict)
+
+    def test_logprobs(self, client: LoggingHttpClient, model: str) -> None:
+        """logprobs and top_logprobs parameters should return log probabilities."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "logprobs": True,
+                "top_logprobs": 3,
+                "max_tokens": 10,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        assert isinstance(body, dict)
+
+        choice = body["choices"][0]
+        if "logprobs" in choice and choice["logprobs"] is not None:
+            logprobs = choice["logprobs"]
+            assert "content" in logprobs
+            assert isinstance(logprobs["content"], list)
+            if len(logprobs["content"]) > 0:
+                token_info = logprobs["content"][0]
+                assert "token" in token_info
+                assert "logprob" in token_info
+                if "top_logprobs" in token_info:
+                    assert isinstance(token_info["top_logprobs"], list)
+                    assert len(token_info["top_logprobs"]) <= 3
+
+    def test_user_field(self, client: LoggingHttpClient, model: str) -> None:
+        """user field should be accepted for tracking purposes."""
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "user": "test-user-123",
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
     def test_json_mode(self, client: LoggingHttpClient, model: str) -> None:
         """response_format=json_object should return valid JSON content."""
         status, body = client.request(

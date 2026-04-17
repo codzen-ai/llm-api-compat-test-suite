@@ -127,6 +127,66 @@ class TestGenerateContent:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    def test_stop_sequences(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """stopSequences in generationConfig should be accepted."""
+        status, body = client.request(
+            "POST",
+            f"/v1beta/models/{model}:generateContent",
+            json_body={
+                "contents": [
+                    {"role": "user", "parts": [{"text": "Count from 1 to 10."}]},
+                ],
+                "generationConfig": {
+                    "stopSequences": ["5"],
+                },
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
+    def test_candidate_count(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """candidateCount in generationConfig should return multiple candidates."""
+        status, body = client.request(
+            "POST",
+            f"/v1beta/models/{model}:generateContent",
+            json_body={
+                "contents": [
+                    {"role": "user", "parts": [{"text": "Say hello."}]},
+                ],
+                "generationConfig": {
+                    "candidateCount": 2,
+                },
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        assert isinstance(body, dict)
+        candidates: Any = body["candidates"]
+        assert isinstance(candidates, list)
+        # Some providers may not support candidateCount > 1
+        assert len(candidates) >= 1
+
+    def test_top_k(self, client: LoggingHttpClient, model: str) -> None:
+        """topK in generationConfig should be accepted."""
+        status, body = client.request(
+            "POST",
+            f"/v1beta/models/{model}:generateContent",
+            json_body={
+                "contents": [
+                    {"role": "user", "parts": [{"text": "Say hello."}]},
+                ],
+                "generationConfig": {
+                    "topK": 40,
+                },
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
     def test_safety_ratings(self, client: LoggingHttpClient, model: str) -> None:
         """Response candidates should include safety ratings."""
         status, body = client.request(

@@ -144,6 +144,53 @@ class TestMessages:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    def test_top_p(self, client: LoggingHttpClient, model: str) -> None:
+        """top_p parameter should be accepted."""
+        status, body = client.request(
+            "POST",
+            "/v1/messages",
+            json_body={
+                "model": model,
+                "max_tokens": 256,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "top_p": 0.9,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
+    def test_top_k(self, client: LoggingHttpClient, model: str) -> None:
+        """top_k parameter should be accepted."""
+        status, body = client.request(
+            "POST",
+            "/v1/messages",
+            json_body={
+                "model": model,
+                "max_tokens": 256,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "top_k": 40,
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
+    def test_metadata_user_id(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """metadata.user_id should be accepted for tracking purposes."""
+        status, body = client.request(
+            "POST",
+            "/v1/messages",
+            json_body={
+                "model": model,
+                "max_tokens": 256,
+                "messages": [{"role": "user", "content": "Say hello."}],
+                "metadata": {"user_id": "test-user-123"},
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+
     def test_stop_sequences(self, client: LoggingHttpClient, model: str) -> None:
         """stop_sequences parameter should be accepted."""
         status, body = client.request(
