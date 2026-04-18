@@ -111,6 +111,7 @@ class TestChatBasic:
         assert isinstance(usage["completion_tokens"], int)
         assert isinstance(usage["total_tokens"], int)
 
+    @pytest.mark.capability("max_tokens")
     def test_max_tokens(self, client: LoggingHttpClient, model: str) -> None:
         """max_tokens parameter should limit response length."""
         status, body = client.request(
@@ -164,6 +165,7 @@ class TestChatBasic:
         assert body["choices"][0]["index"] == 0
         assert body["choices"][1]["index"] == 1
 
+    @pytest.mark.capability("stop_sequences")
     def test_stop_sequence(self, client: LoggingHttpClient, model: str) -> None:
         """stop parameter should be accepted."""
         status, body = client.request(
@@ -304,6 +306,7 @@ class TestChatBasic:
         # system_fingerprint may be returned when seed is used
         assert isinstance(body, dict)
 
+    @pytest.mark.capability("logprobs")
     def test_logprobs(self, client: LoggingHttpClient, model: str) -> None:
         """logprobs and top_logprobs parameters should return log probabilities."""
         status, body = client.request(
@@ -314,7 +317,7 @@ class TestChatBasic:
                 "messages": [{"role": "user", "content": "Say hello."}],
                 "logprobs": True,
                 "top_logprobs": 3,
-                "max_tokens": 10,
+                "max_completion_tokens": 10,
             },
         )
 

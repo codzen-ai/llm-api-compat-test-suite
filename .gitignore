@@ -14,3 +14,5 @@ reports/
 
 # Config with secrets
 config.yaml
+
+.env
