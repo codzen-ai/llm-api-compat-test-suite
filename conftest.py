@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from config import ModelConfig, ProviderConfig, SuiteConfig  # noqa: E402
 from http_client import LoggingHttpClient  # noqa: E402
+from model_profile import ResolvedModel, resolve_models  # noqa: E402
 from report import ReportCollector, TestResult  # noqa: E402
 
 # ── Global state ──────────────────────────────────────────────────────────────
@@ -22,6 +23,9 @@ from report import ReportCollector, TestResult  # noqa: E402
 _suite_config: SuiteConfig | None = None
 _active_provider: ProviderConfig | None = None
 _active_models: list[ModelConfig] = []
+# Populated alongside _active_models in pytest_configure. Fixture wiring is
+# done in TODO 3; for now this serves the profile-load warning path only.
+_resolved_models: list[ResolvedModel] = []
 _report_dir: Path = Path("reports")
 _collector = ReportCollector()
 
@@ -84,7 +88,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    global _suite_config, _active_provider, _active_models, _report_dir, _collector  # noqa: PLW0603
+    global _suite_config, _active_provider, _active_models  # noqa: PLW0603
+    global _resolved_models, _report_dir, _collector  # noqa: PLW0603
 
     config_file: str | None = config.getoption("config_file")
     base_url: str | None = config.getoption("base_url")
@@ -119,12 +124,31 @@ def pytest_configure(config: pytest.Config) -> None:
                 m for m in _active_models if m.name == model_filter
             ]
 
+        _resolved_models = resolve_models(
+            _active_provider.api_format,
+            _active_models,
+            on_fallback=_warn_profile_fallback,
+        )
+
     # Set up report directory
     timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
     _report_dir = Path("reports") / timestamp
     _report_dir.mkdir(parents=True, exist_ok=True)
     (_report_dir / "logs").mkdir(exist_ok=True)
     _collector = ReportCollector(report_dir=_report_dir)
+
+
+def _warn_profile_fallback(model: ModelConfig, detail: str) -> None:
+    """Surface profile-load failures during transition.
+
+    TODO 7 removes the fallback path; until then, a missing profile is a
+    warning, not an error — so the user can still run PR1-era configs while
+    they migrate. Emitted on stderr so it shows up even under ``-q``.
+    """
+    sys.stderr.write(
+        f"[profile] WARNING: model '{model.name}' profile='{model.profile}' "
+        f"could not be loaded, falling back to config.capabilities. {detail}\n"
+    )
 
 
 # ── Test collection filtering ─────────────────────────────────────────────────
