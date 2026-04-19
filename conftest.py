@@ -190,12 +190,17 @@ def pytest_collection_modifyitems(
 
 
 def _should_skip_for_capability(
-    item: pytest.Item, model: ModelConfig
+    item: pytest.Item, model: ResolvedModel
 ) -> str | None:
-    """Return skip reason if test requires a capability the model lacks."""
+    """Return skip reason if test requires a capability the model lacks.
+
+    ``model.capabilities`` prefers the loaded profile and falls back to
+    ``ModelConfig.capabilities`` during the transition window (TODO 2–6).
+    """
+    effective = model.capabilities
     for marker in item.iter_markers("capability"):
         required: str | None = marker.args[0] if marker.args else None
-        if required and required not in model.capabilities:
+        if required and required not in effective:
             return f"Model '{model.name}' lacks capability '{required}'"
     return None
 
@@ -211,36 +216,38 @@ def provider_config() -> ProviderConfig:
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Dynamically parametrize model_config fixture based on loaded config."""
-    if "model_config" in metafunc.fixturenames:
-        models = _active_models if _active_models else [None]
+    """Dynamically parametrize resolved_model fixture based on loaded config."""
+    if "resolved_model" in metafunc.fixturenames:
+        models = _resolved_models if _resolved_models else [None]
         ids = [m.name if m else "no-model" for m in models]
-        metafunc.parametrize("model_config", models, ids=ids, indirect=True)
+        metafunc.parametrize("resolved_model", models, ids=ids, indirect=True)
 
 
 @pytest.fixture
-def model_config(request: pytest.FixtureRequest) -> ModelConfig:
-    model: ModelConfig | None = request.param
+def resolved_model(request: pytest.FixtureRequest) -> ResolvedModel:
+    model: ResolvedModel | None = request.param
     if model is None:
         pytest.skip("No models configured")
     return model
 
 
 @pytest.fixture
-def model(model_config: ModelConfig, request: pytest.FixtureRequest) -> str:
+def model(
+    resolved_model: ResolvedModel, request: pytest.FixtureRequest
+) -> str:
     node: pytest.Item = request.node  # type: ignore[assignment]
     skip_reason = _should_skip_for_capability(
-        node, model_config  # type: ignore[arg-type]
+        node, resolved_model  # type: ignore[arg-type]
     )
     if skip_reason:
         pytest.skip(skip_reason)
-    return model_config.name
+    return resolved_model.name
 
 
 @pytest.fixture
 def client(
     provider_config: ProviderConfig,
-    model_config: ModelConfig,
+    resolved_model: ResolvedModel,
     request: pytest.FixtureRequest,
 ) -> Generator[LoggingHttpClient]:
     api_format = provider_config.api_format
@@ -288,7 +295,7 @@ def client(
 
         lines = [
             f"Test: {node_id}",
-            f"Model: {model_config.name}",
+            f"Model: {resolved_model.name}",
             f"Provider: {provider_config.name}",
             f"Base URL: {provider_config.base_url}",
             "=" * 72,
