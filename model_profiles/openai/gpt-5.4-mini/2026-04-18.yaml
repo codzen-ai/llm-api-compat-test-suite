@@ -1,6 +1,7 @@
 # Schema example — see src/model_profile.py::ModelProfile for the authoritative
-# definition. Capabilities match the PR1 run of gpt-5.4-mini on api.openai.com
-# (23 passed / 3 skipped); TODO 5 will tighten this against a richer marker set.
+# definition. Capabilities reflect the PR1 run of gpt-5.4-mini against
+# api.openai.com (23 passed / 3 skipped). TODO 5 will re-validate this
+# against the full marker set once `--ignore-profile` lands.
 
 model: gpt-5.4-mini
 snapshot: gpt-5.4-mini-2026-04-18
@@ -17,6 +18,15 @@ capabilities:
   - tools
   - vision
   - logprobs
+  - max_completion_tokens
+  - system_message
+  - temperature
+  - n_multi
+  - top_p
+  - frequency_penalty
+  - presence_penalty
+  - seed
+  - json_mode
   # Deliberately omitted (validated in PR1):
   #   - max_tokens        — gpt-5.x requires max_completion_tokens
   #   - stop_sequences    — server rejects `stop`
