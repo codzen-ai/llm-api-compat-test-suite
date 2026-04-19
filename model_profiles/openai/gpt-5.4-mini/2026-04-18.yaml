@@ -1,4 +1,4 @@
-# Schema example — see src/profile.py::ModelProfile for the authoritative
+# Schema example — see src/model_profile.py::ModelProfile for the authoritative
 # definition. Ground-truth capabilities here are PROVISIONAL; TODO 5 will
 # validate them against live OpenAI runs before this file becomes canonical.
 

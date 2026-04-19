@@ -1,4 +1,3 @@
-# ruff: noqa: A005  # module name `profile` shadows stdlib — intentional per design doc.
 """Model capability profiles — the ground-truth benchmark for compat testing.
 
 A profile records what an official model snapshot supports (e.g. OpenAI's

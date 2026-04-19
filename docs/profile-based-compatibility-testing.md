@@ -214,7 +214,7 @@ PR1 完成后，OpenAI 官方 `gpt-5.4-mini` 在现有用户声明 capability �
 ### TODO 1：Profile 基础设施
 
 **产出：**
-- `src/profile.py`：`ModelProfile` Pydantic 模型 + `ProfileRegistry` 加载器
+- `src/model_profile.py`：`ModelProfile` Pydantic 模型 + `ProfileRegistry` 加载器（模块名用 `model_profile` 以避开 stdlib `profile` 冲突）
 - `model_profiles/` 目录结构（先放一份 `gpt-5.4-mini` 的样板 YAML，作为 schema 示例）
 
 **关键点：**
