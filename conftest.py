@@ -360,7 +360,10 @@ def pytest_runtest_makereport(
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if _collector.results:
-        summary_path = _collector.generate_summary(provider=_active_provider)
+        summary_path = _collector.generate_summary(
+            provider=_active_provider,
+            resolved_models=_resolved_models,
+        )
         print(f"\n{'=' * 72}")  # noqa: T201
         print(f"Report: {summary_path}")  # noqa: T201
         print(f"Logs:   {_report_dir / 'logs'}")  # noqa: T201

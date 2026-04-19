@@ -7,6 +7,53 @@ from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from config import ProviderConfig
+    from model_profile import ResolvedModel
+
+
+def _models_section(
+    provider: ProviderConfig,
+    resolved_models: list[ResolvedModel] | None,
+) -> list[str]:
+    """Render the per-model profile detail table.
+
+    Each configured model gets one row listing the profile path, snapshot,
+    created_at, and whether the snapshot was pinned in config or auto-picked
+    as the latest by the registry. The point of the table is that a reader
+    can reconstruct *exactly* which ground-truth was used for a run.
+    """
+    lines = [
+        "## Models",
+        "",
+        "| Model | Profile | Snapshot | Created | Resolution |",
+        "|-------|---------|----------|---------|------------|",
+    ]
+    by_name: dict[str, ResolvedModel] = {}
+    if resolved_models:
+        by_name = {rm.name: rm for rm in resolved_models}
+
+    for m in provider.models:
+        rm = by_name.get(m.name)
+        if rm is None or rm.profile is None:
+            # Transitional path: no profile attached (TODO 7 removes this).
+            lines.append(
+                f"| {m.name} | _none — using config.capabilities_ "
+                "| — | — | fallback |"
+            )
+            continue
+        p = rm.profile
+        path_str = "—"
+        if p.source_path is not None:
+            try:
+                path_str = str(p.source_path.relative_to(Path.cwd()))
+            except ValueError:
+                path_str = str(p.source_path)
+        resolution = "pinned" if m.profile_snapshot else "auto-latest"
+        lines.append(
+            f"| {m.name} | `{path_str}` | {p.snapshot} "
+            f"| {p.created_at.isoformat()} | {resolution} |"
+        )
+    lines.append("")
+    return lines
 
 
 class TestResult(BaseModel):
@@ -25,7 +72,9 @@ class ReportCollector(BaseModel):
         self.results.append(result)
 
     def generate_summary(
-        self, provider: ProviderConfig | None = None
+        self,
+        provider: ProviderConfig | None = None,
+        resolved_models: list[ResolvedModel] | None = None,
     ) -> Path:
         summary_path = self.report_dir / "summary.md"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -41,7 +90,6 @@ class ReportCollector(BaseModel):
         ]
 
         if provider:
-            models_str = ", ".join(m.name for m in provider.models)
             lines.extend([
                 "## Configuration",
                 "",
@@ -52,9 +100,9 @@ class ReportCollector(BaseModel):
                 f"| API Format | {provider.api_format} |",
                 f"| Auth Type | {provider.auth_type or 'auto'} |",
                 f"| Verify SSL | {provider.verify_ssl} |",
-                f"| Models | {models_str} |",
                 "",
             ])
+            lines.extend(_models_section(provider, resolved_models))
 
         lines.extend([
             "## Summary",
