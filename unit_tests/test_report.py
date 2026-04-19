@@ -1,4 +1,4 @@
-"""Unit tests for the report's Profile metadata rendering (TODO 6)."""
+"""Unit tests for the report's Profile metadata rendering."""
 
 from __future__ import annotations
 
@@ -85,25 +85,19 @@ def test_report_marks_pinned_when_snapshot_set(tmp_path: Path) -> None:
     assert "pinned" in text
 
 
-def test_report_falls_back_when_profile_missing(tmp_path: Path) -> None:
-    """No profile attached → row marked `fallback`, no snapshot/date."""
-    m = ModelConfig(name="m")  # no profile field
-    provider = _make_provider([m])
-    resolved = [ResolvedModel(config=m, profile=None)]
-
-    path = _collector(tmp_path).generate_summary(provider, resolved_models=resolved)
-    text = path.read_text()
+def test_report_handles_missing_resolved_models(tmp_path: Path) -> None:
+    """``resolved_models=None`` is degenerate (no conftest pairing happened);
+    rendering must not crash, and no per-model row should be fabricated."""
+    provider = _make_provider([ModelConfig(name="m", profile="m")])
+    text = (
+        _collector(tmp_path)
+        .generate_summary(provider, resolved_models=None)
+        .read_text()
+    )
 
     assert "## Models" in text
-    assert "fallback" in text
-    assert "using config.capabilities" in text
-
-
-def test_report_handles_missing_resolved_models(tmp_path: Path) -> None:
-    """No resolved_models passed: every row is fallback (not a crash)."""
-    provider = _make_provider([ModelConfig(name="m")])
-    path = _collector(tmp_path).generate_summary(provider, resolved_models=None)
-    assert "fallback" in path.read_text()
+    # Header present, but no data row for model "m"
+    assert "| m |" not in text
 
 
 @pytest.mark.parametrize("count", [2, 3])

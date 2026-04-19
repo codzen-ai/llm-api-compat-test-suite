@@ -25,9 +25,7 @@ from config import (  # noqa: TC001  # pydantic needs runtime access
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-
-    FallbackHandler = Callable[[ModelConfig, str], None]
+    from collections.abc import Iterable
 
 
 DEFAULT_PROFILES_ROOT = Path(__file__).resolve().parent.parent / "model_profiles"
@@ -175,16 +173,10 @@ class ProfileRegistry:
 
 
 class ResolvedModel(BaseModel):
-    """A configured model paired with the profile that defines its benchmark.
-
-    Introduced in TODO 2 of the profile-based compat plan. During the
-    transitional period ``profile`` may be ``None``: either the user has not
-    yet migrated their config, or profile loading failed. Capability checks
-    then fall back to ``config.capabilities``.
-    """
+    """A configured model paired with the profile that defines its benchmark."""
 
     config: ModelConfig
-    profile: ModelProfile | None = None
+    profile: ModelProfile
 
     @property
     def name(self) -> str:
@@ -192,40 +184,23 @@ class ResolvedModel(BaseModel):
 
     @property
     def capabilities(self) -> list[str]:
-        """Effective capabilities for skip logic.
-
-        Prefers the profile (authoritative ground truth). Falls back to the
-        user-declared capabilities when no profile is attached — this path is
-        removed in TODO 7.
-        """
-        if self.profile is not None:
-            return self.profile.capabilities
-        return self.config.capabilities
+        return self.profile.capabilities
 
 
 def resolve_models(
     api_format: ApiFormat | str,
     models: list[ModelConfig],
     registry: ProfileRegistry | None = None,
-    *,
-    on_fallback: FallbackHandler | None = None,
 ) -> list[ResolvedModel]:
     """Pair each :class:`ModelConfig` with its loaded :class:`ModelProfile`.
 
-    Models without a ``profile`` field, or whose profile fails to load, are
-    returned with ``profile=None`` and ``on_fallback`` is invoked so the
-    caller can surface a warning. The loader never raises here — the transition
-    plan explicitly tolerates missing profiles until TODO 7.
+    Raises :class:`ProfileNotFoundError` for any model whose profile can't be
+    located — the caller is expected to translate that into a surfaced error
+    (``pytest.UsageError`` from conftest) rather than silently skipping.
     """
     reg = registry if registry is not None else ProfileRegistry()
     resolved: list[ResolvedModel] = []
     for m in models:
-        profile: ModelProfile | None = None
-        if m.profile is not None:
-            try:
-                profile = reg.load(api_format, m.profile, m.profile_snapshot)
-            except ProfileNotFoundError as err:
-                if on_fallback is not None:
-                    on_fallback(m, str(err))
+        profile = reg.load(api_format, m.profile, m.profile_snapshot)
         resolved.append(ResolvedModel(config=m, profile=profile))
     return resolved

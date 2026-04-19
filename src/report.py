@@ -33,12 +33,7 @@ def _models_section(
 
     for m in provider.models:
         rm = by_name.get(m.name)
-        if rm is None or rm.profile is None:
-            # Transitional path: no profile attached (TODO 7 removes this).
-            lines.append(
-                f"| {m.name} | _none — using config.capabilities_ "
-                "| — | — | fallback |"
-            )
+        if rm is None:
             continue
         p = rm.profile
         path_str = "—"
@@ -57,6 +52,10 @@ def _models_section(
 
 
 class TestResult(BaseModel):
+    # Stop pytest from trying to collect this as a test class — its name
+    # starts with "Test" which triggers a PytestCollectionWarning otherwise.
+    __test__ = False
+
     node_id: str
     outcome: str  # "passed", "failed", "skipped", "error"
     duration: float

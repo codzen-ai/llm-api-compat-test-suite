@@ -32,7 +32,12 @@ def _make_conftest(pytester: pytest.Pytester) -> None:
 
 
 def _make_config(pytester: pytest.Pytester, filename: str = "config.yaml") -> Path:
-    """Create a minimal valid config.yaml in pytester's tmpdir."""
+    """Create a minimal valid config.yaml in pytester's tmpdir.
+
+    Uses the committed ``gpt-5.4-mini`` profile as the ground truth — it's
+    always available in the real ``model_profiles/`` tree the pytester'd
+    conftest still points at via SRC_DIR.
+    """
     content = """\
 providers:
   - name: "test-provider"
@@ -41,7 +46,7 @@ providers:
     api_format: "openai"
     models:
       - name: "test-model"
-        capabilities: ["chat"]
+        profile: "gpt-5.4-mini"
 """
     config_path = pytester.path / filename
     config_path.write_text(content)
@@ -146,8 +151,47 @@ class TestCliArgs:
             "--api-key=test-key",
             "--api-format=openai",
             "--model=cli-model",
+            "--profile=gpt-5.4-mini",
             "-v",
         )
 
         # Model is parametrized from CLI, test shows up with model name
         result.stdout.fnmatch_lines(["*cli-model*"])
+
+    def test_cli_model_without_profile_errors(
+        self, pytester: pytest.Pytester
+    ) -> None:
+        """--model without --profile → UsageError (no implicit ground truth)."""
+        _make_conftest(pytester)
+        pytester.makepyfile(test_sample=DUMMY_TEST)
+
+        result = pytester.runpytest(
+            "--base-url=http://localhost:9999",
+            "--api-key=test-key",
+            "--api-format=openai",
+            "--model=cli-model",
+            "-v",
+        )
+
+        result.stderr.fnmatch_lines(["*--profile is required*"])
+        assert result.ret != 0
+
+    def test_cli_missing_profile_errors(
+        self, pytester: pytest.Pytester
+    ) -> None:
+        """--profile=nonexistent → UsageError listing available profiles."""
+        _make_conftest(pytester)
+        pytester.makepyfile(test_sample=DUMMY_TEST)
+
+        result = pytester.runpytest(
+            "--base-url=http://localhost:9999",
+            "--api-key=test-key",
+            "--api-format=openai",
+            "--model=cli-model",
+            "--profile=does-not-exist",
+            "-v",
+        )
+
+        result.stderr.fnmatch_lines(["*Profile directory not found*"])
+        result.stderr.fnmatch_lines(["*Available profiles*"])
+        assert result.ret != 0

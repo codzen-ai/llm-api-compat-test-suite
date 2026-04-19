@@ -15,7 +15,11 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from config import ModelConfig, ProviderConfig, SuiteConfig  # noqa: E402
 from http_client import LoggingHttpClient  # noqa: E402
-from model_profile import ResolvedModel, resolve_models  # noqa: E402
+from model_profile import (  # noqa: E402
+    ProfileNotFoundError,
+    ResolvedModel,
+    resolve_models,
+)
 from report import ReportCollector, TestResult  # noqa: E402
 
 # ── Global state ──────────────────────────────────────────────────────────────
@@ -23,8 +27,6 @@ from report import ReportCollector, TestResult  # noqa: E402
 _suite_config: SuiteConfig | None = None
 _active_provider: ProviderConfig | None = None
 _active_models: list[ModelConfig] = []
-# Populated alongside _active_models in pytest_configure. Fixture wiring is
-# done in TODO 3; for now this serves the profile-load warning path only.
 _resolved_models: list[ResolvedModel] = []
 _report_dir: Path = Path("reports")
 _collector = ReportCollector()
@@ -67,6 +69,24 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         dest="model",
         default=None,
         help="Model name to test (CLI override)",
+    )
+    group.addoption(
+        "--profile",
+        dest="profile",
+        default=None,
+        help=(
+            "Profile name (e.g. gpt-5.4-mini) to benchmark the model against. "
+            "Required in CLI mode when --model is given."
+        ),
+    )
+    group.addoption(
+        "--profile-snapshot",
+        dest="profile_snapshot",
+        default=None,
+        help=(
+            "Pin a specific profile snapshot file "
+            "(e.g. 2025-03-15). Omit for latest."
+        ),
     )
     group.addoption(
         "--auth-type",
@@ -116,12 +136,19 @@ def pytest_configure(config: pytest.Config) -> None:
         api_key: str = config.getoption("api_key") or ""
         api_format: str = config.getoption("api_format") or "openai"
         model_name: str | None = config.getoption("model")
-        _suite_config = SuiteConfig.from_cli(
-            base_url=base_url,
-            api_key=api_key,
-            api_format=api_format,
-            model=model_name,
-        )
+        profile_name: str | None = config.getoption("profile")
+        profile_snapshot: str | None = config.getoption("profile_snapshot")
+        try:
+            _suite_config = SuiteConfig.from_cli(
+                base_url=base_url,
+                api_key=api_key,
+                api_format=api_format,
+                model=model_name,
+                profile=profile_name,
+                profile_snapshot=profile_snapshot,
+            )
+        except ValueError as err:
+            raise pytest.UsageError(str(err)) from err
     else:
         return
 
@@ -136,11 +163,13 @@ def pytest_configure(config: pytest.Config) -> None:
                 m for m in _active_models if m.name == model_filter
             ]
 
-        _resolved_models = resolve_models(
-            _active_provider.api_format,
-            _active_models,
-            on_fallback=_warn_profile_fallback,
-        )
+        try:
+            _resolved_models = resolve_models(
+                _active_provider.api_format,
+                _active_models,
+            )
+        except ProfileNotFoundError as err:
+            raise pytest.UsageError(str(err)) from err
 
     # Set up report directory
     timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
@@ -148,19 +177,6 @@ def pytest_configure(config: pytest.Config) -> None:
     _report_dir.mkdir(parents=True, exist_ok=True)
     (_report_dir / "logs").mkdir(exist_ok=True)
     _collector = ReportCollector(report_dir=_report_dir)
-
-
-def _warn_profile_fallback(model: ModelConfig, detail: str) -> None:
-    """Surface profile-load failures during transition.
-
-    TODO 7 removes the fallback path; until then, a missing profile is a
-    warning, not an error — so the user can still run PR1-era configs while
-    they migrate. Emitted on stderr so it shows up even under ``-q``.
-    """
-    sys.stderr.write(
-        f"[profile] WARNING: model '{model.name}' profile='{model.profile}' "
-        f"could not be loaded, falling back to config.capabilities. {detail}\n"
-    )
 
 
 # ── Test collection filtering ─────────────────────────────────────────────────
@@ -204,11 +220,8 @@ def pytest_collection_modifyitems(
 def _should_skip_for_capability(
     item: pytest.Item, model: ResolvedModel
 ) -> str | None:
-    """Return skip reason if test requires a capability the model lacks.
-
-    ``model.capabilities`` prefers the loaded profile and falls back to
-    ``ModelConfig.capabilities`` during the transition window (TODO 2–6).
-    """
+    """Return skip reason if the test's capability marker is absent from the
+    model's profile-declared capabilities."""
     effective = model.capabilities
     for marker in item.iter_markers("capability"):
         required: str | None = marker.args[0] if marker.args else None
@@ -250,7 +263,7 @@ def model(
     node: pytest.Item = request.node  # type: ignore[assignment]
     if request.config.getoption("ignore_profile"):
         # Recording mode — bypass capability filtering so every marked test
-        # actually runs. Results feed profile authoring in TODO 5.
+        # runs; results feed profile authoring.
         return resolved_model.name
     skip_reason = _should_skip_for_capability(
         node, resolved_model  # type: ignore[arg-type]

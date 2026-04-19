@@ -13,19 +13,8 @@ if TYPE_CHECKING:
 
 class ModelConfig(BaseModel):
     name: str
-    # Transitional: kept while TODO 2–6 run so PR1-era configs still load.
-    # TODO 7 removes this; by then every config must reference a profile.
-    capabilities: list[str] = ["chat"]
-    # Ground-truth binding added in TODO 2 (profile-based compat plan).
-    profile: str | None = None
+    profile: str
     profile_snapshot: str | None = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def accept_string(cls, data: Any) -> Any:
-        if isinstance(data, str):
-            return {"name": data}
-        return data
 
 
 class ApiFormat(StrEnum):
@@ -77,20 +66,24 @@ class SuiteConfig(BaseModel):
         api_key: str,
         api_format: str,
         model: str | None = None,
+        profile: str | None = None,
+        profile_snapshot: str | None = None,
     ) -> SuiteConfig:
-        """Build config from CLI arguments for single-provider testing."""
+        """Build config from CLI arguments for single-provider testing.
+
+        ``profile`` is required whenever ``model`` is given — without it there
+        is no ground truth against which to filter capability markers.
+        """
         models: list[ModelConfig] = []
         if model:
+            if not profile:
+                msg = "--profile is required when --model is given"
+                raise ValueError(msg)
             models = [
                 ModelConfig(
                     name=model,
-                    capabilities=[
-                        "chat",
-                        "streaming",
-                        "tools",
-                        "vision",
-                        "embeddings",
-                    ],
+                    profile=profile,
+                    profile_snapshot=profile_snapshot,
                 )
             ]
 
