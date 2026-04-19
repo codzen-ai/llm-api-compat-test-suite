@@ -100,6 +100,41 @@ class TestConfigFlag:
         assert result.ret != 0
 
 
+class TestIgnoreProfile:
+    """`--ignore-profile` bypasses capability filtering for profile authoring."""
+
+    # A test that only runs when the model has the "special_cap" capability —
+    # exercises the skip path unless --ignore-profile is set.
+    MARKED_TEST = """\
+import pytest
+
+@pytest.mark.capability("special_cap")
+def test_requires_special_cap(model):
+    assert isinstance(model, str)
+"""
+
+    def test_without_flag_skips(self, pytester: pytest.Pytester) -> None:
+        _make_conftest(pytester)
+        _make_config(pytester, "config.yaml")  # model only has "chat"
+        pytester.makepyfile(test_marked=self.MARKED_TEST)
+
+        # -rs surfaces the full skip reason in the summary line
+        result = pytester.runpytest("--config", "-v", "-rs")
+
+        result.assert_outcomes(skipped=1)
+        result.stdout.fnmatch_lines(["*lacks capability 'special_cap'*"])
+
+    def test_with_flag_runs(self, pytester: pytest.Pytester) -> None:
+        _make_conftest(pytester)
+        _make_config(pytester, "config.yaml")  # same config, still lacks cap
+        pytester.makepyfile(test_marked=self.MARKED_TEST)
+
+        result = pytester.runpytest("--config", "--ignore-profile", "-v")
+
+        # With the flag, skip is bypassed → the test body runs and passes.
+        result.assert_outcomes(passed=1)
+
+
 class TestCliArgs:
     def test_cli_base_url(self, pytester: pytest.Pytester) -> None:
         """pytest --base-url=... --api-format=openai → CLI mode works."""

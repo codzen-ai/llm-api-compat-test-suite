@@ -82,6 +82,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Disable SSL certificate verification",
     )
+    group.addoption(
+        "--ignore-profile",
+        dest="ignore_profile",
+        action="store_true",
+        default=False,
+        help=(
+            "Recording mode: run every capability-marked test regardless of "
+            "profile, so you can observe what a model really supports before "
+            "authoring its profile YAML. See "
+            "docs/profile-based-compatibility-testing.md."
+        ),
+    )
 
 
 # ── Configuration loading ─────────────────────────────────────────────────────
@@ -236,6 +248,10 @@ def model(
     resolved_model: ResolvedModel, request: pytest.FixtureRequest
 ) -> str:
     node: pytest.Item = request.node  # type: ignore[assignment]
+    if request.config.getoption("ignore_profile"):
+        # Recording mode — bypass capability filtering so every marked test
+        # actually runs. Results feed profile authoring in TODO 5.
+        return resolved_model.name
     skip_reason = _should_skip_for_capability(
         node, resolved_model  # type: ignore[arg-type]
     )
