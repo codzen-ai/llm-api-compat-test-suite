@@ -1,26 +1,22 @@
 from __future__ import annotations
 
 import datetime
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
-if TYPE_CHECKING:
-    from collections.abc import Generator
-
-# Allow importing from src/
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from config import ModelConfig, ProviderConfig, SuiteConfig  # noqa: E402
-from http_client import LoggingHttpClient  # noqa: E402
-from model_profile import (  # noqa: E402
+from config import ModelConfig, ProviderConfig, SuiteConfig
+from http_client import LoggingHttpClient
+from model_profile import (
     ProfileNotFoundError,
     ResolvedModel,
     resolve_models,
 )
-from report import ReportCollector, TestResult  # noqa: E402
+from report import ReportCollector, TestResult
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 # ── Global state ──────────────────────────────────────────────────────────────
 

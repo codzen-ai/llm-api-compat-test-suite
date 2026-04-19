@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import datetime
-import sys
 from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-
-from config import ApiFormat, ModelConfig, ProviderConfig  # noqa: E402
-from model_profile import ModelProfile, ResolvedModel  # noqa: E402
-from report import ReportCollector, TestResult  # noqa: E402
+from config import ApiFormat, ModelConfig, ProviderConfig
+from model_profile import ModelProfile, ResolvedModel
+from report import ReportCollector, TestResult
 
 
 def _make_provider(models: list[ModelConfig]) -> ProviderConfig:

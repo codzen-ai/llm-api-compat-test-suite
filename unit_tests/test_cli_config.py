@@ -11,7 +11,6 @@ pytest_plugins = ["pytester"]
 
 PROJECT_ROOT = Path(__file__).parent.parent
 CONFTEST_PATH = PROJECT_ROOT / "conftest.py"
-SRC_DIR = PROJECT_ROOT / "src"
 
 # Minimal test file that uses the `model` fixture from conftest
 DUMMY_TEST = """\
@@ -21,22 +20,21 @@ def test_dummy(model):
 
 
 def _make_conftest(pytester: pytest.Pytester) -> None:
-    """Copy the project conftest into pytester's tmpdir."""
-    conftest_content = CONFTEST_PATH.read_text()
-    # Patch sys.path to point to the real src/ directory
-    conftest_content = conftest_content.replace(
-        'sys.path.insert(0, str(Path(__file__).parent / "src"))',
-        f'sys.path.insert(0, r"{SRC_DIR}")',
-    )
-    pytester.makeconftest(conftest_content)
+    """Copy the project conftest into pytester's tmpdir.
+
+    The in-process pytester child inherits the parent's sys.path, which
+    already contains ``src/`` via ``pythonpath`` in pyproject.toml, so the
+    copied conftest's top-level imports resolve without extra patching.
+    """
+    pytester.makeconftest(CONFTEST_PATH.read_text())
 
 
 def _make_config(pytester: pytest.Pytester, filename: str = "config.yaml") -> Path:
     """Create a minimal valid config.yaml in pytester's tmpdir.
 
     Uses the committed ``gpt-5.4-mini`` profile as the ground truth — it's
-    always available in the real ``model_profiles/`` tree the pytester'd
-    conftest still points at via SRC_DIR.
+    always available in the real ``model_profiles/`` tree that the copied
+    conftest resolves against.
     """
     content = """\
 providers:

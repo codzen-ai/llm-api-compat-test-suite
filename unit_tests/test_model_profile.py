@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-PROJECT_ROOT = Path(__file__).parent.parent
-SRC_DIR = PROJECT_ROOT / "src"
-sys.path.insert(0, str(SRC_DIR))
-
-from config import ModelConfig  # noqa: E402
-from model_profile import (  # noqa: E402
+from config import ModelConfig
+from model_profile import (
     ModelProfile,
     ProfileNotFoundError,
     ProfileRegistry,
