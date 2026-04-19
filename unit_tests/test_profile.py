@@ -1,3 +1,7 @@
+# pyright: reportAttributeAccessIssue=false
+# The module name `profile` shadows Python's stdlib profile module, which
+# confuses pyright's import resolver. At runtime conftest's sys.path insert
+# makes this work; disable the diagnostic here rather than rename per docs.
 """Unit tests for ModelProfile loading and ProfileRegistry lookup."""
 
 from __future__ import annotations
