@@ -211,7 +211,7 @@ PR1 完成后，OpenAI 官方 `gpt-5.4-mini` 在现有用户声明 capability �
 
 按依赖顺序推进，每个 TODO 完成后**停下来让用户 review**，确认方向再进下一步。
 
-### TODO 1：Profile 基础设施
+### TODO 1：Profile 基础设施（✅ 已完成）
 
 **产出：**
 - `src/model_profile.py`：`ModelProfile` Pydantic 模型 + `ProfileRegistry` 加载器（模块名用 `model_profile` 以避开 stdlib `profile` 冲突）
@@ -226,7 +226,7 @@ PR1 完成后，OpenAI 官方 `gpt-5.4-mini` 在现有用户声明 capability �
 
 ---
 
-### TODO 2：ModelConfig 引入 profile 字段（带过渡兼容）
+### TODO 2：ModelConfig 引入 profile 字段（✅ 已完成，过渡 fallback 已在 TODO 7 移除）
 
 **产出：**
 - `src/config.py` 的 `ModelConfig`：
@@ -241,7 +241,7 @@ PR1 完成后，OpenAI 官方 `gpt-5.4-mini` 在现有用户声明 capability �
 
 ---
 
-### TODO 3：capability 解析切到 profile
+### TODO 3：capability 解析切到 profile（✅ 已完成）
 
 **产出：**
 - 修改 `conftest.py` 的 `_should_skip_for_capability`：优先从 `model.profile.capabilities` 读；profile 不存在时 fallback 到 `model.capabilities`
@@ -251,7 +251,7 @@ PR1 完成后，OpenAI 官方 `gpt-5.4-mini` 在现有用户声明 capability �
 
 ---
 
-### TODO 4：扩展细粒度 marker 覆盖（承接 PR1）
+### TODO 4：扩展细粒度 marker 覆盖（✅ 已完成）
 
 PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"细粒度 Capability 清单"里剩余项：`n_multi` / `seed` / `json_mode` / `system_message` / `temperature` / `top_p` / `frequency_penalty` / `presence_penalty` / `max_completion_tokens`。
 
@@ -263,7 +263,7 @@ PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"
 
 ---
 
-### TODO 5：建立初始 ground truth（人工 + AI）
+### TODO 5：建立初始 ground truth（✅ `--ignore-profile` 开关 + `gpt-5.4-mini` profile 已完成；其它模型待补）
 
 **产出：**
 - 加 `--ignore-profile` CLI 开关（在 `conftest.py` 的 `pytest_addoption`）
@@ -275,7 +275,7 @@ PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"
 
 ---
 
-### TODO 6：测试报告标注所用 profile
+### TODO 6：测试报告标注所用 profile（✅ 已完成）
 
 **产出：**
 - `src/report.py` 生成的 [summary.md](../reports/) Configuration 段加字段：Profile 文件路径、snapshot、created_at、resolution（auto-latest / pinned）
@@ -285,7 +285,7 @@ PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"
 
 ---
 
-### TODO 7：CLI 模式调整 + 移除过渡 fallback
+### TODO 7：CLI 模式调整 + 移除过渡 fallback（✅ 已完成）
 
 **产出：**
 - CLI 新增 `--profile <name>` / `--profile-snapshot <date>`；`--profile` 必填
@@ -297,7 +297,7 @@ PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"
 
 ---
 
-### TODO 8：文档与示例更新
+### TODO 8：文档与示例更新（✅ 已完成）
 
 **产出：**
 - 更新 [config.yaml](../config.yaml) 示例，用新的 profile 语法

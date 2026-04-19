@@ -1,7 +1,8 @@
 # Schema example — see src/model_profile.py::ModelProfile for the authoritative
-# definition. Capabilities reflect the PR1 run of gpt-5.4-mini against
-# api.openai.com (23 passed / 3 skipped). TODO 5 will re-validate this
-# against the full marker set once `--ignore-profile` lands.
+# definition. Capabilities validated against api.openai.com using
+# `pytest --config --ignore-profile`, then classified per
+# model_profiles/README.md (PASS + real capability → include; FAIL or
+# ambiguous → omit).
 
 model: gpt-5.4-mini
 snapshot: gpt-5.4-mini-2026-04-18
@@ -27,7 +28,7 @@ capabilities:
   - presence_penalty
   - seed
   - json_mode
-  # Deliberately omitted (validated in PR1):
+  # Deliberately omitted:
   #   - max_tokens        — gpt-5.x requires max_completion_tokens
   #   - stop_sequences    — server rejects `stop`
   #   - embeddings        — chat model, not an embedding model
