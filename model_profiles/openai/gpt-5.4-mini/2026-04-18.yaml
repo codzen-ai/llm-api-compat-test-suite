@@ -1,0 +1,23 @@
+# Schema example — see src/profile.py::ModelProfile for the authoritative
+# definition. Ground-truth capabilities here are PROVISIONAL; TODO 5 will
+# validate them against live OpenAI runs before this file becomes canonical.
+
+model: gpt-5.4-mini
+snapshot: gpt-5.4-mini-2026-04-18
+api_format: openai
+created_at: 2026-04-18
+source_endpoint: https://api.openai.com
+
+# Capability markers must match the names registered in pyproject.toml and
+# attached to tests via @pytest.mark.capability(...). A marker absent from
+# this list means the corresponding test is skipped for this model.
+capabilities:
+  - chat
+  - streaming
+  - tools
+  - vision
+  - max_completion_tokens
+  - logprobs
+  # Known omissions for gpt-5.x (validated in PR1):
+  #   - max_tokens          (replaced by max_completion_tokens)
+  #   - stop_sequences      (rejected by the server)
