@@ -69,7 +69,7 @@ reportUnknownArgumentType = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "unit_tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]
 markers = [
     # Names must match entries in model_profiles/.../*.yaml capabilities lists.
     # New markers are introduced alongside the test that depends on them;

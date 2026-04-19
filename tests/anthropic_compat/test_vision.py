@@ -5,14 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from fixtures import TINY_PNG_B64
 
 from http_client import LoggingHttpClient
-
-# Small 1x1 red PNG, base64 encoded
-TINY_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
-    "nGP4z8BQDwAEgAF/pooBPQAAAABJRU5ErkJggg=="
-)
 
 
 @pytest.mark.capability("vision")

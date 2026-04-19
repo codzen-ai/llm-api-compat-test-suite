@@ -1,0 +1,20 @@
+# Capabilities validated against api.anthropic.com using
+# `pytest --config config.anthropic.yaml --ignore-profile tests/anthropic_compat/`
+# on 2026-04-19 (16/16 PASS), then classified per model_profiles/README.md
+# (PASS + real capability → include; FAIL or ambiguous → omit).
+
+model: claude-haiku-4-5
+snapshot: claude-haiku-4-5-2026-04-19
+api_format: anthropic
+created_at: 2026-04-19
+source_endpoint: https://api.anthropic.com
+
+# Granularity is limited by the markers attached to tests/anthropic_compat/:
+# today those are class-level only. If tests/anthropic_compat/ grows
+# per-parameter markers (cf. tests/openai_compat/test_chat_basic.py), list
+# the new markers here after another recording run.
+capabilities:
+  - chat
+  - streaming
+  - tools
+  - vision

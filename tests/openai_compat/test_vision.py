@@ -3,20 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from fixtures import TINY_PNG_B64
 
 from http_client import LoggingHttpClient
-
-# 64x64 PNG with shapes, base64 encoded (OpenAI vision rejects tiny 1x1 images)
-TINY_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAABXUlEQVR4nO2a3W7DIBSDbavv/8pn"
-    "arOLTVsTDj8Bs31XkRpRGwMtHBgRcEYwRzBHMEcwRzBHMEcw5zGiUZLvPur+s/MYIToKX4sOZtje"
-    "yqGpopXDSqOAJgPV0r81gifVMuonMcloVo9XC3E6bS5kVFjv0vG/NIsnWT2a1fG9olCF+qFE0oOW"
-    "Ul/hQaupz3qw/yuhBbs/FcL1Mnqinv1Wo/hcRX9+xcXCuvsQ4ozBkxpIWyfA2d1fEsLWCVgg7GqA"
-    "a0yAy2mwbwIuCOYI5gjmCOYI5gi7GoiIyqOmAfD9tmbfBFwQNjYQa0wDnu7rt04AC4TA7Y9VWHIe"
-    "P2tzw4JyQVECUwYSy4od9kNIhe/dHAKLa02JBG7zwEylLDeEbvDAZJ0vPQcODyNsMK++qdDdd21l"
-    "ba27fhXqFQUb1P/5uxI1t1W+PK9yW2XufSH+X3ydjGCOYI5gjmCOZgto5QPMYJlbNJq0MAAAAABJ"
-    "RU5ErkJggg=="
-)
 
 
 @pytest.mark.capability("vision")

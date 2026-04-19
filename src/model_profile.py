@@ -145,7 +145,7 @@ class ProfileRegistry:
         return loaded[0]
 
     def _load_file(self, path: Path) -> ModelProfile:
-        with path.open() as f:  # noqa: PTH123
+        with path.open() as f:
             data = yaml.safe_load(f)
         profile = ModelProfile.model_validate(data)
         return profile.model_copy(update={"source_path": path})
