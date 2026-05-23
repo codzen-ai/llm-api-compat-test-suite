@@ -28,7 +28,15 @@ capabilities:
   - presence_penalty
   - seed
   - json_mode
+  - performance
   # Deliberately omitted:
   #   - max_tokens        — gpt-5.x requires max_completion_tokens
   #   - stop_sequences    — server rejects `stop`
   #   - embeddings        — chat model, not an embedding model
+
+# Latency budget for streaming responses. Median of N samples must be
+# at or below these caps. Tune these against observed numbers from the
+# official endpoint — they are placeholder defaults, not vendor SLOs.
+performance:
+  ttft_ms: 1500
+  tpot_ms: 80

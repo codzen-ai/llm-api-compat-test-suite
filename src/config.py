@@ -5,16 +5,30 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, cast
 
 import yaml
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class PerformanceOverride(BaseModel):
+    """Per-model override of the profile's TTFT/TPOT budget.
+
+    Either field may be omitted; missing fields fall back to the profile's
+    default in :meth:`ResolvedModel.performance_budget`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ttft_ms: float | None = None
+    tpot_ms: float | None = None
 
 
 class ModelConfig(BaseModel):
     name: str
     profile: str
     profile_snapshot: str | None = None
+    performance: PerformanceOverride | None = None
 
 
 class ApiFormat(StrEnum):

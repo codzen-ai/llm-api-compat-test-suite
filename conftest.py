@@ -361,6 +361,16 @@ def pytest_runtest_makereport(
     if call.excinfo is not None:
         failure_message = str(call.excinfo.getrepr(style="short"))
 
+    # Pull free-form details a test stashed via `record_property("details", ...)`.
+    # Anything else in user_properties (record_property is also used by pytest
+    # internals like XML reporters) is ignored.
+    details_parts = [
+        value
+        for key, value in item.user_properties
+        if key == "details" and isinstance(value, str)
+    ]
+    details = "\n\n".join(details_parts)
+
     _collector.add_result(
         TestResult(
             node_id=item.nodeid,
@@ -368,6 +378,7 @@ def pytest_runtest_makereport(
             duration=duration,
             log_file=log_path if log_path.exists() else None,
             failure_message=failure_message,
+            details=details,
         )
     )
 

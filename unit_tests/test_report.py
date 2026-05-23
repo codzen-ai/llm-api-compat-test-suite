@@ -102,6 +102,36 @@ def test_report_omits_models_section_without_resolved(tmp_path: Path) -> None:
     assert "## Models" not in text
 
 
+def test_report_renders_test_details(tmp_path: Path) -> None:
+    """A TestResult with ``details`` produces a ``## Test Details`` section
+    keyed by the test's last ``::`` segment."""
+    col = ReportCollector(report_dir=tmp_path)
+    col.add_result(
+        TestResult(
+            node_id="tests/openai_compat/test_performance.py::TestPerformance::test_streaming_latency[m]",
+            outcome="passed",
+            duration=27.5,
+            details="- TTFT median: 420 ms\n- TPOT median: 19.2 ms/tok",
+        )
+    )
+    text = col.generate_summary().read_text()
+
+    assert "## Test Details" in text
+    assert "### test_streaming_latency[m]" in text
+    assert "TTFT median: 420 ms" in text
+    assert "TPOT median: 19.2 ms/tok" in text
+
+
+def test_report_omits_test_details_when_no_details(tmp_path: Path) -> None:
+    """No results with ``details`` → no header at all (avoid an empty section)."""
+    col = ReportCollector(report_dir=tmp_path)
+    col.add_result(
+        TestResult(node_id="t::x", outcome="passed", duration=0.1)
+    )
+    text = col.generate_summary().read_text()
+    assert "## Test Details" not in text
+
+
 @pytest.mark.parametrize("count", [2, 3])
 def test_report_renders_one_row_per_model(tmp_path: Path, count: int) -> None:
     configs = [

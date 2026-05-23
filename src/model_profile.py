@@ -35,6 +35,22 @@ class ProfileNotFoundError(LookupError):
     """Raised when a requested profile (or snapshot) does not exist on disk."""
 
 
+class PerformanceBudget(BaseModel):
+    """Latency budget for a model snapshot.
+
+    Both fields are upper bounds: the median of N samples must be ≤ the
+    budget for the test to pass.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ttft_ms: float
+    """Time-to-first-token upper bound, in milliseconds."""
+
+    tpot_ms: float
+    """Time-per-output-token upper bound, in milliseconds/token."""
+
+
 class ModelProfile(BaseModel):
     """Ground-truth capability surface for one model snapshot.
 
@@ -66,6 +82,10 @@ class ModelProfile(BaseModel):
     """Capability markers (see ``pyproject.toml`` markers list) the snapshot
     is known to support. Tests marked with a capability not listed here are
     skipped for this model."""
+
+    performance: PerformanceBudget | None = None
+    """Default TTFT/TPOT budget. Users may override per-model in their config
+    file. ``None`` means no budget is defined; performance tests skip."""
 
 
 class ProfileRegistry:
@@ -194,6 +214,26 @@ class ResolvedModel(BaseModel):
     @property
     def capabilities(self) -> list[str]:
         return self.profile.capabilities
+
+    @property
+    def performance_budget(self) -> PerformanceBudget | None:
+        """Effective performance budget: config override fields win, missing
+        fields fall back to the profile default. Returns ``None`` if neither
+        source supplies both ``ttft_ms`` and ``tpot_ms``."""
+        profile_perf = self.profile.performance
+        override = self.config.performance
+
+        ttft = override.ttft_ms if override and override.ttft_ms is not None else None
+        if ttft is None and profile_perf is not None:
+            ttft = profile_perf.ttft_ms
+
+        tpot = override.tpot_ms if override and override.tpot_ms is not None else None
+        if tpot is None and profile_perf is not None:
+            tpot = profile_perf.tpot_ms
+
+        if ttft is None or tpot is None:
+            return None
+        return PerformanceBudget(ttft_ms=ttft, tpot_ms=tpot)
 
 
 def resolve_models(

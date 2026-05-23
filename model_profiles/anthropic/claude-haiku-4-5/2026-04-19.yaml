@@ -18,3 +18,11 @@ capabilities:
   - streaming
   - tools
   - vision
+  - performance
+
+# Latency budget for streaming responses. Median of N samples must be at
+# or below these caps. Tune against observed numbers from the official
+# endpoint — these are placeholder defaults, not vendor SLOs.
+performance:
+  ttft_ms: 1500
+  tpot_ms: 60

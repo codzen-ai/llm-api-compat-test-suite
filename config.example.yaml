@@ -17,6 +17,10 @@ providers:
         # profile_snapshot: "2025-03-15"    # Optional: filename stem under
                                             # model_profiles/<api_format>/<profile>/;
                                             # omit → latest by `created_at` field
+        # performance:                      # Optional: override the profile's
+        #   ttft_ms: 2000                   # TTFT/TPOT budget. Either field
+        #   tpot_ms: 100                    # may be omitted to keep the
+                                            # profile default for that field.
 
   # Example: Test an Anthropic-compatible provider
   # - name: "my-anthropic-compat-provider"
