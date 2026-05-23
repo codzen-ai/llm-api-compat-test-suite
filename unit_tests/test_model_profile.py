@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from config import ModelConfig
+from config import ModelConfig, PerformanceOverride
 from model_profile import (
     ModelProfile,
+    PerformanceBudget,
     ProfileNotFoundError,
     ProfileRegistry,
     ResolvedModel,
@@ -201,3 +202,83 @@ class TestResolveModels:
         """``ProfileNotFoundError`` inherits from ``LookupError`` so callers
         can ``except LookupError`` to handle missing-resource errors generically."""
         assert issubclass(ProfileNotFoundError, LookupError)
+
+
+# ── Performance budget resolution ─────────────────────────────────────────
+
+
+PROFILE_WITH_PERF = VALID_YAML + (
+    "performance:\n"
+    "  ttft_ms: 1500\n"
+    "  tpot_ms: 80\n"
+)
+
+
+class TestPerformanceBudget:
+    def _resolve(
+        self,
+        tmp_path: Path,
+        profile_yaml: str,
+        override: PerformanceOverride | None,
+    ) -> ResolvedModel:
+        path = _write_profile(
+            tmp_path, "openai/gpt-4o/2024-08-06.yaml", profile_yaml
+        )
+        reg = ProfileRegistry(root=tmp_path)
+        profile, _ = reg.load("openai", "gpt-4o")
+        cfg = ModelConfig(
+            name="gpt-4o", profile="gpt-4o", performance=override
+        )
+        return ResolvedModel(config=cfg, profile=profile, source_path=path)
+
+    def test_profile_only(self, tmp_path: Path) -> None:
+        resolved = self._resolve(tmp_path, PROFILE_WITH_PERF, override=None)
+        budget = resolved.performance_budget
+        assert budget == PerformanceBudget(ttft_ms=1500, tpot_ms=80)
+
+    def test_override_replaces_both(self, tmp_path: Path) -> None:
+        resolved = self._resolve(
+            tmp_path,
+            PROFILE_WITH_PERF,
+            PerformanceOverride(ttft_ms=2000, tpot_ms=100),
+        )
+        budget = resolved.performance_budget
+        assert budget == PerformanceBudget(ttft_ms=2000, tpot_ms=100)
+
+    def test_partial_override_falls_back_to_profile(
+        self, tmp_path: Path
+    ) -> None:
+        """Override of only ``ttft_ms`` keeps profile's ``tpot_ms`` — useful
+        when one provider has good throughput but slow first-token."""
+        resolved = self._resolve(
+            tmp_path,
+            PROFILE_WITH_PERF,
+            PerformanceOverride(ttft_ms=2500),
+        )
+        budget = resolved.performance_budget
+        assert budget == PerformanceBudget(ttft_ms=2500, tpot_ms=80)
+
+    def test_no_profile_no_override_returns_none(
+        self, tmp_path: Path
+    ) -> None:
+        resolved = self._resolve(tmp_path, VALID_YAML, override=None)
+        assert resolved.performance_budget is None
+
+    def test_override_alone_is_insufficient(self, tmp_path: Path) -> None:
+        """Override that only provides one field, with no profile default to
+        fill the other, yields ``None`` — partial budgets are not actionable."""
+        resolved = self._resolve(
+            tmp_path, VALID_YAML, PerformanceOverride(ttft_ms=2000)
+        )
+        assert resolved.performance_budget is None
+
+    def test_override_fully_supplies_both(self, tmp_path: Path) -> None:
+        """If the profile has no budget at all, a fully-specified override
+        is enough on its own."""
+        resolved = self._resolve(
+            tmp_path,
+            VALID_YAML,
+            PerformanceOverride(ttft_ms=2000, tpot_ms=100),
+        )
+        budget = resolved.performance_budget
+        assert budget == PerformanceBudget(ttft_ms=2000, tpot_ms=100)

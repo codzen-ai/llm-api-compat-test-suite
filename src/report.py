@@ -67,6 +67,10 @@ class TestResult(BaseModel):
     duration: float
     log_file: Path | None = None
     failure_message: str = ""
+    details: str = ""
+    """Free-form markdown details a test can attach via ``record_property``
+    (key ``"details"``). Rendered in the report's "Test Details" section.
+    Used today for TTFT/TPOT numbers; any test can opt in."""
 
 
 class ReportCollector(BaseModel):
@@ -164,6 +168,25 @@ class ReportCollector(BaseModel):
                 )
 
             lines.append("")
+
+        detailed = [r for r in self.results if r.details]
+        if detailed:
+            lines.extend([
+                "## Test Details",
+                "",
+            ])
+            for r in detailed:
+                test_name = (
+                    r.node_id.split("::")[-1]
+                    if "::" in r.node_id
+                    else r.node_id
+                )
+                lines.extend([
+                    f"### {test_name}",
+                    "",
+                    r.details,
+                    "",
+                ])
 
         if failed:
             lines.extend([

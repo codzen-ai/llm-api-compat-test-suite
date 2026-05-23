@@ -124,6 +124,35 @@ class LoggingHttpClient(BaseModel):
 
         Collects all SSE lines for both validation and logging.
         """
+        status_code, timed = self._stream(
+            method, path, json_body=json_body, headers=headers
+        )
+        return status_code, [line for _, line in timed]
+
+    def request_stream_timed(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: JsonDict | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, list[tuple[float, str]]]:
+        """Streaming request that also returns per-line receive timestamps.
+
+        Each tuple is ``(ms_since_request_start, line)``. Used by the
+        performance test to compute TTFT/TPOT; routine streaming tests should
+        use :meth:`request_stream` instead.
+        """
+        return self._stream(method, path, json_body=json_body, headers=headers)
+
+    def _stream(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: JsonDict | None,
+        headers: dict[str, str] | None,
+    ) -> tuple[int, list[tuple[float, str]]]:
         url = f"{self.base_url}{path}"
         merged_headers = {**self.default_headers, **(headers or {})}
 
@@ -131,7 +160,7 @@ class LoggingHttpClient(BaseModel):
         if json_body is not None:
             request_body_str = json.dumps(json_body, ensure_ascii=False)
 
-        sse_lines: list[str] = []
+        timed_lines: list[tuple[float, str]] = []
 
         start = time.monotonic()
         with (
@@ -146,7 +175,8 @@ class LoggingHttpClient(BaseModel):
             status_code = resp.status_code
             resp_headers = dict(resp.headers)
             for line in resp.iter_lines():
-                sse_lines.append(line)
+                ts = (time.monotonic() - start) * 1000
+                timed_lines.append((ts, line))
         elapsed = (time.monotonic() - start) * 1000
 
         record = RequestRecord(
@@ -156,9 +186,9 @@ class LoggingHttpClient(BaseModel):
             request_body=request_body_str,
             status_code=status_code,
             response_headers=resp_headers,
-            response_body="\n".join(sse_lines),
+            response_body="\n".join(line for _, line in timed_lines),
             elapsed_ms=elapsed,
         )
         self.records.append(record)
 
-        return status_code, sse_lines
+        return status_code, timed_lines
