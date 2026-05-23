@@ -7,8 +7,8 @@ providers:
   # Example: Test a third-party provider claiming OpenAI compatibility
   - name: "my-openai-compat-provider"
     base_url: "https://api.example.com"
-    api_key_env: "MY_PROVIDER_API_KEY"     # Read API key from this env var
-    # api_key: "sk-..."                    # Or hardcode directly (not recommended)
+    api_key: "sk-..."                       # Paste your API key directly
+    # api_key_env: "MY_PROVIDER_API_KEY"   # Or read from an env var (api_key takes priority if both set)
     api_format: "openai"                    # openai | anthropic | gemini
     # auth_type: "bearer"                  # bearer | x-api-key | x-goog-api-key (default: auto from api_format)
     models:
@@ -21,7 +21,7 @@ providers:
   # Example: Test an Anthropic-compatible provider
   # - name: "my-anthropic-compat-provider"
   #   base_url: "https://api.example.com"
-  #   api_key_env: "ANTHROPIC_COMPAT_KEY"
+  #   api_key: "sk-ant-..."
   #   api_format: "anthropic"
   #   models:
   #     - name: "claude-sonnet-4-20250514"
@@ -30,7 +30,7 @@ providers:
   # Example: Test a Gemini-compatible provider
   # - name: "my-gemini-compat-provider"
   #   base_url: "https://generativelanguage.googleapis.com"
-  #   api_key_env: "GEMINI_COMPAT_KEY"
+  #   api_key: "AIza..."
   #   api_format: "gemini"
   #   models:
   #     - name: "gemini-2.0-flash"

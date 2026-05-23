@@ -43,7 +43,7 @@ cp config.example.yaml config.yaml
 providers:
   - name: "my-provider"
     base_url: "https://api.example.com"
-    api_key_env: "MY_PROVIDER_API_KEY"   # Read from env var
+    api_key: "sk-..."                     # Paste directly, or use `api_key_env: "MY_PROVIDER_API_KEY"` to read from env
     api_format: "openai"                  # openai | anthropic | gemini
     models:
       - name: "openai/gpt-5.4-mini"       # third-party's model identifier
