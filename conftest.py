@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import datetime
+import io
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from _pytest._io import TerminalWriter
 
 from config import ModelConfig, ProviderConfig, SuiteConfig
 from http_client import LoggingHttpClient
@@ -359,7 +361,14 @@ def pytest_runtest_makereport(
 
     failure_message = ""
     if call.excinfo is not None:
-        failure_message = str(call.excinfo.getrepr(style="short"))
+        # Render through a TerminalWriter with markup disabled so the report
+        # captures plain text instead of ANSI color escapes that pytest would
+        # otherwise embed in source snippets.
+        buf = io.StringIO()
+        tw = TerminalWriter(buf)
+        tw.hasmarkup = False
+        call.excinfo.getrepr(style="short").toterminal(tw)
+        failure_message = buf.getvalue()
 
     # Pull free-form details a test stashed via `record_property("details", ...)`.
     # Anything else in user_properties (record_property is also used by pytest
