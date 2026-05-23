@@ -305,8 +305,8 @@ def client(
         headers["anthropic-version"] = "2023-06-01"
 
     # Determine verify_ssl: CLI override > config
-    cli_no_verify: bool = request.config.getoption("no_verify_ssl")
-    verify_ssl = not cli_no_verify if cli_no_verify else provider_config.verify_ssl
+    cli_no_verify = bool(request.config.getoption("no_verify_ssl"))
+    verify_ssl = False if cli_no_verify else provider_config.verify_ssl
 
     http_client = LoggingHttpClient(
         base_url=provider_config.base_url,

@@ -1,6 +1,8 @@
 {
   "evenBetterToml.schema.enabled": false,
 
+  "python.analysis.typeCheckingMode": "strict",
+
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
