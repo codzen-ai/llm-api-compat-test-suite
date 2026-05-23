@@ -11,9 +11,6 @@ dependencies = [
     "pytest>=8.0",
 ]
 
-[tool.uv]
-index-url = "https://pypi.apple.com/simple/"
-
 [dependency-groups]
 dev = [
     "pyright>=1.1.408",
