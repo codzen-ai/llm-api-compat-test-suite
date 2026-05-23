@@ -169,7 +169,7 @@ def pytest_configure(config: pytest.Config) -> None:
             raise pytest.UsageError(str(err)) from err
 
     # Set up report directory
-    timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
     _report_dir = Path("reports") / timestamp
     _report_dir.mkdir(parents=True, exist_ok=True)
     (_report_dir / "logs").mkdir(exist_ok=True)
