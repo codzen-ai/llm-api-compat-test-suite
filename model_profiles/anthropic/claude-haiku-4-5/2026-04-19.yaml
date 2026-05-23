@@ -1,5 +1,5 @@
 # Capabilities validated against api.anthropic.com using
-# `pytest --config config.anthropic.yaml --ignore-profile tests/anthropic_compat/`
+# `pytest --config configs/anthropic.yaml --ignore-profile tests/anthropic_compat/`
 # on 2026-04-19 (16/16 PASS), then classified per model_profiles/README.md
 # (PASS + real capability → include; FAIL or ambiguous → omit).
 

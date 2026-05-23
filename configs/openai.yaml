@@ -1,0 +1,8 @@
+providers:
+  - name: "openai-official"
+    base_url: "https://api.openai.com"
+    api_key_env: "OPENAI_API_KEY"
+    api_format: "openai"
+    models:
+      - name: "gpt-5.4-mini"
+        profile: "gpt-5.4-mini"

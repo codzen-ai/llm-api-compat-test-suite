@@ -53,6 +53,8 @@ providers:
 
 `profile` points at a YAML under `model_profiles/{api_format}/{profile}/…yaml` that records what the official reference model supports. Capability filtering is driven by that file — users do not declare capabilities themselves.
 
+Ready-to-use configs live in [`configs/`](configs/): `configs/openai.yaml`, `configs/anthropic.yaml`, `configs/openrouter.yaml`. Set the matching `*_API_KEY` env var and run `pytest --config configs/openai.yaml -v` (etc.).
+
 **Option B: CLI arguments** (quick single-provider testing)
 
 ```bash
@@ -155,7 +157,11 @@ Each `.log` file contains:
 
 ```
 ├── conftest.py                 # CLI options, fixtures, report hooks
-├── config.yaml                 # Configuration (gitignored; users create locally)
+├── config.yaml                 # Personal config (gitignored; copy from config.example.yaml)
+├── configs/                    # Curated configs for the 3 reference providers
+│   ├── openai.yaml
+│   ├── anthropic.yaml
+│   └── openrouter.yaml
 ├── src/
 │   ├── config.py               # YAML config loading & validation
 │   ├── http_client.py          # httpx wrapper with request/response capture

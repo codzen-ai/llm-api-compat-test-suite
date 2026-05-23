@@ -1,0 +1,8 @@
+providers:
+  - name: "open-router"
+    base_url: "https://openrouter.ai/api"
+    api_key_env: "OPENROUTER_API_KEY"
+    api_format: "openai"
+    models:
+      - name: "openai/gpt-5.4-mini"
+        profile: "gpt-5.4-mini"
