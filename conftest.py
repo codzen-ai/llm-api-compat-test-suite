@@ -373,6 +373,8 @@ def pytest_runtest_makereport(
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if _suite_config is None:
+        return
     if _collector.results:
         summary_path = _collector.generate_summary(
             provider=_active_provider,
