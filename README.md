@@ -6,20 +6,20 @@ Tests send raw HTTP requests in the official API format to the third-party endpo
 
 ## Features
 
-- **3 API formats**: OpenAI, Anthropic, Gemini — 43 test cases total
+- **3 API formats**: OpenAI, Anthropic, Gemini — 58 test cases total
 - **Raw HTTP testing**: Uses `httpx` directly (not SDKs) to verify HTTP-level compatibility
 - **Pydantic config validation**: Configuration is validated with Pydantic models, invalid values fail fast
-- **Model capability filtering**: Auto-skips tests the model doesn't support (e.g., vision, tools)
+- **Profile-based capability filtering**: Each model is benchmarked against a hand-authored ground-truth profile (e.g. OpenAI's `gpt-5.4-mini`). Tests are filtered to the capability subset the reference model actually supports. See [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md).
 - **Per-test HTTP logs**: Every request/response pair saved to individual `.log` files
-- **Markdown summary report**: Generated automatically after each run
+- **Markdown summary report**: Generated automatically after each run, annotated with the profile baseline used
 
 ## Test Coverage
 
 | API Format | Tests | Categories |
 |---|---|---|
-| OpenAI | 14 | chat, streaming, tool calling, vision, embeddings |
-| Anthropic | 13 | messages, streaming, tool use, vision |
-| Gemini | 11 | generateContent, streaming, function calling |
+| OpenAI | 28 | chat, streaming, tool calling, vision, embeddings |
+| Anthropic | 16 | messages, streaming, tool use, vision |
+| Gemini | 14 | generateContent, streaming, function calling |
 
 ## Quick Start
 
@@ -43,41 +43,52 @@ cp config.example.yaml config.yaml
 providers:
   - name: "my-provider"
     base_url: "https://api.example.com"
-    api_key_env: "MY_PROVIDER_API_KEY"  # Read from env var
-    api_format: "openai"                 # openai | anthropic | gemini
+    api_key_env: "MY_PROVIDER_API_KEY"   # Read from env var
+    api_format: "openai"                  # openai | anthropic | gemini
     models:
-      - name: "gpt-4o"
-        capabilities: ["chat", "streaming", "tools", "vision"]
-      - name: "gpt-3.5-turbo"
-        capabilities: ["chat", "streaming", "tools"]
+      - name: "openai/gpt-5.4-mini"       # third-party's model identifier
+        profile: "gpt-5.4-mini"            # which OpenAI ground-truth to benchmark against
+        # profile_snapshot: "2025-03-15"   # optional, pin a specific snapshot; omit for latest
 ```
+
+`profile` points at a YAML under `model_profiles/{api_format}/{profile}/…yaml` that records what the official reference model supports. Capability filtering is driven by that file — users do not declare capabilities themselves.
+
+Ready-to-use configs live in [`configs/`](configs/): `configs/openai.yaml`, `configs/anthropic.yaml`, `configs/openrouter.yaml`. Set the matching `*_API_KEY` env var and run `pytest --config configs/openai.yaml -v` (etc.).
 
 **Option B: CLI arguments** (quick single-provider testing)
 
 ```bash
-pytest --base-url=https://api.example.com --api-key=sk-xxx --api-format=openai --model=gpt-4o -v
+pytest --base-url=https://api.example.com \
+       --api-key=sk-xxx \
+       --api-format=openai \
+       --model=gpt-4o \
+       --profile=gpt-5.4-mini -v
 ```
 
-Additional CLI options:
+`--profile` is required whenever `--model` is given. Additional CLI options:
 
+- `--profile-snapshot=YYYY-MM-DD` — Pin a specific profile snapshot file; omit for latest
 - `--auth-type=bearer|x-api-key|x-goog-api-key` — Override auth header type (default: auto from api-format)
 - `--no-verify-ssl` — Disable SSL certificate verification (for self-signed certs)
-
-In CLI mode, all capabilities are enabled by default.
+- `--ignore-profile` — Recording mode: run every capability-marked test regardless of profile. Used when authoring a new profile; see [model_profiles/README.md](model_profiles/README.md).
 
 ### CLI Options
 
 | Option | Required | Default | Description |
 |---|---|---|---|
-| `--config` | No | - | Path to YAML configuration file |
+| `--config` | No | - | Path to YAML configuration file (default filename: `config.yaml` when flag is bare) |
 | `--base-url` | Yes* | - | API base URL |
 | `--api-key` | Yes* | - | API key |
 | `--api-format` | Yes* | - | `openai`, `anthropic`, or `gemini` |
 | `--model` | No | All models in config | Model name to test |
+| `--profile` | Yes** | - | Profile name to benchmark against (e.g. `gpt-5.4-mini`) |
+| `--profile-snapshot` | No | Latest by `created_at` | Pin a snapshot file (e.g. `2025-03-15`) |
 | `--auth-type` | No | Auto from `api-format` | `bearer`, `x-api-key`, or `x-goog-api-key` |
 | `--no-verify-ssl` | No | `false` | Disable SSL certificate verification |
+| `--ignore-profile` | No | `false` | Bypass capability filtering (profile authoring mode) |
 
 \* Required when not using `--config`.
+\*\* Required whenever `--model` is given; in YAML mode each model must declare `profile:`.
 
 ### Run Tests
 
@@ -101,7 +112,8 @@ pytest --config=config.yaml --model=gpt-4o -v
 pytest --base-url=https://api.example.com \
        --api-key=sk-xxx \
        --api-format=openai \
-       --model=gpt-4o -v
+       --model=gpt-4o \
+       --profile=gpt-5.4-mini -v
 
 # Use Bearer auth with Anthropic format (e.g., floodgate)
 pytest tests/anthropic_compat/ \
@@ -110,20 +122,17 @@ pytest tests/anthropic_compat/ \
        --api-format=anthropic \
        --auth-type=bearer \
        --no-verify-ssl \
-       --model=claude-haiku -v
+       --model=claude-haiku-4-5 \
+       --profile=claude-haiku-4-5 -v
 ```
 
 ## Model Capabilities
 
-Each model in the config declares which capabilities it supports. Tests requiring a capability the model lacks are automatically skipped.
+Capabilities are declared by **profiles**, not by users. A profile records what an official model snapshot (e.g. `gpt-5.4-mini`) actually supports; tests carrying a `@pytest.mark.capability("X")` marker are skipped if `X` is absent from the configured profile.
 
-| Capability | Description | Supported Formats |
-|---|---|---|
-| `chat` | Basic chat/message completion | all |
-| `streaming` | Server-sent events streaming | all |
-| `tools` | Function/tool calling | all |
-| `vision` | Image input processing | all |
-| `embeddings` | Text embedding API | OpenAI only |
+Fine-grained markers currently in use: `chat`, `streaming`, `tools`, `vision`, `embeddings`, `max_tokens`, `max_completion_tokens`, `stop_sequences`, `n_multi`, `logprobs`, `seed`, `json_mode`, `system_message`, `temperature`, `top_p`, `frequency_penalty`, `presence_penalty` (full list in [pyproject.toml](pyproject.toml)).
+
+Authoring a new profile → see [model_profiles/README.md](model_profiles/README.md). Design rationale → see [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md).
 
 ## Reports
 
@@ -148,17 +157,24 @@ Each `.log` file contains:
 
 ```
 ├── conftest.py                 # CLI options, fixtures, report hooks
-├── config.example.yaml         # Configuration template
+├── config.yaml                 # Personal config (gitignored; copy from config.example.yaml)
+├── configs/                    # Curated configs for the 3 reference providers
+│   ├── openai.yaml
+│   ├── anthropic.yaml
+│   └── openrouter.yaml
 ├── src/
 │   ├── config.py               # YAML config loading & validation
 │   ├── http_client.py          # httpx wrapper with request/response capture
+│   ├── model_profile.py        # Ground-truth profile loader
 │   └── report.py               # Markdown report generation
+├── model_profiles/             # Hand-authored ground-truth YAMLs
+│   └── openai/{model}/{YYYY-MM-DD}.yaml
+├── docs/                       # Design docs (profile-based compat testing)
 ├── tests/                      # Compatibility tests (core deliverable)
 │   ├── openai_compat/
 │   ├── anthropic_compat/
 │   └── gemini_compat/
 └── unit_tests/                 # Unit tests for the project itself
-    └── test_cli_config.py
 ```
 
 ## Development

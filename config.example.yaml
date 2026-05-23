@@ -7,15 +7,16 @@ providers:
   # Example: Test a third-party provider claiming OpenAI compatibility
   - name: "my-openai-compat-provider"
     base_url: "https://api.example.com"
-    api_key_env: "MY_PROVIDER_API_KEY"    # Read API key from this env var
-    # api_key: "sk-..."                   # Or hardcode directly (not recommended)
-    api_format: "openai"                   # openai | anthropic | gemini
-    # auth_type: "bearer"                 # bearer | x-api-key | x-goog-api-key (default: auto from api_format)
+    api_key_env: "MY_PROVIDER_API_KEY"     # Read API key from this env var
+    # api_key: "sk-..."                    # Or hardcode directly (not recommended)
+    api_format: "openai"                    # openai | anthropic | gemini
+    # auth_type: "bearer"                  # bearer | x-api-key | x-goog-api-key (default: auto from api_format)
     models:
-      - name: "gpt-4o"
-        capabilities: ["chat", "streaming", "tools", "vision"]
-      - name: "gpt-3.5-turbo"
-        capabilities: ["chat", "streaming", "tools"]
+      - name: "openai/gpt-5.4-mini"         # Third-party's model identifier
+        profile: "gpt-5.4-mini"              # OpenAI model to benchmark against (see model_profiles/)
+        # profile_snapshot: "2025-03-15"    # Optional: filename stem under
+                                            # model_profiles/<api_format>/<profile>/;
+                                            # omit → latest by `created_at` field
 
   # Example: Test an Anthropic-compatible provider
   # - name: "my-anthropic-compat-provider"
@@ -24,7 +25,7 @@ providers:
   #   api_format: "anthropic"
   #   models:
   #     - name: "claude-sonnet-4-20250514"
-  #       capabilities: ["chat", "streaming", "tools", "vision"]
+  #       profile: "claude-sonnet-4"
 
   # Example: Test a Gemini-compatible provider
   # - name: "my-gemini-compat-provider"
@@ -33,20 +34,22 @@ providers:
   #   api_format: "gemini"
   #   models:
   #     - name: "gemini-2.0-flash"
-  #       capabilities: ["chat", "streaming", "tools"]
+  #       profile: "gemini-2.0-flash"
 
-# Available capabilities:
-#   chat       - Basic chat/message completion
-#   streaming  - Server-sent events streaming
-#   tools      - Function/tool calling
-#   vision     - Image input processing
-#   embeddings - Text embedding (OpenAI format only)
+# `profile:` must match a directory under model_profiles/{api_format}/.
+# Capabilities are read from the profile YAML (ground truth) — users do not
+# declare them. To see what's available:
+#   ls model_profiles/openai/
+# To author a new profile: see model_profiles/README.md.
 
 # Auth types (default is auto-detected from api_format):
-#   bearer       - Authorization: Bearer <key>  (default for openai)
-#   x-api-key    - x-api-key: <key>             (default for anthropic)
-#   x-goog-api-key - x-goog-api-key: <key>      (default for gemini)
+#   bearer         - Authorization: Bearer <key>  (default for openai)
+#   x-api-key      - x-api-key: <key>             (default for anthropic)
+#   x-goog-api-key - x-goog-api-key: <key>        (default for gemini)
 
 # CLI-only options:
-#   --no-verify-ssl  Disable SSL certificate verification
-#   --auth-type      Override auth header type
+#   --profile <name>           Required with --model; picks the benchmark profile
+#   --profile-snapshot <date>  Pin a profile snapshot file; omit → latest
+#   --ignore-profile           Recording mode: bypass capability filtering (profile authoring)
+#   --no-verify-ssl            Disable SSL certificate verification
+#   --auth-type                Override auth header type

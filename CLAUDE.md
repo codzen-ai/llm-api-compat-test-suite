@@ -13,6 +13,7 @@ uv run pytest --config -v        # Run compat tests with config.yaml
 uv run pytest tests/openai_compat/ --config -v   # Single format
 uv run pytest tests/openai_compat/test_chat_basic.py::TestChatBasic::test_simple_message --config -v  # Single test
 uv run pytest --collect-only --config  # Preview which tests will run
+uv run pytest --config --ignore-profile -v   # Recording mode: bypass capability filtering to author a new profile
 ```
 
 ## Architecture
@@ -32,12 +33,12 @@ uv run pytest --collect-only --config  # Preview which tests will run
 - **`pytest_generate_tests`** handles dynamic model parametrization because `@pytest.fixture(params=...)` evaluates at import time before config is loaded
 - **Auth override chain**: CLI `--auth-type` > config `auth_type` field > default from `api_format` (bearer/x-api-key/x-goog-api-key)
 - **`--config` with no value** defaults to `config.yaml` (uses `nargs="?"` + `const`)
-- CLI mode auto-enables all capabilities; YAML config lets you restrict per model
-- `src/` modules are on `sys.path` via conftest.py line 14, imported as `from config import ...` (not package imports)
+- `--profile <name>` is required (YAML per-model or CLI flag); capabilities are read from `model_profiles/{api_format}/{profile}/…yaml`, not user-declared — see [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md)
+- `src/` and `tests/` are on `sys.path` via `pythonpath = ["src", "tests"]` in [pyproject.toml](pyproject.toml), so modules import as `from config import ...` / `from fixtures import ...` (not package imports)
 
 ### Adding a new test
 
-Put it in the right `tests/{format}_compat/` directory. Use `@pytest.mark.capability("tools")` if it needs specific capabilities. Request `client` and `model` fixtures:
+Put it in the right `tests/{format}_compat/` directory. Attach `@pytest.mark.capability("X")` for **every** parameter/behavior the test exercises — marker granularity is "one capability per independently-toggleable model behavior" (see [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md)). Register new marker names in `pyproject.toml`'s `markers` list. Request `client` and `model` fixtures:
 
 ```python
 @pytest.mark.capability("streaming")
@@ -46,6 +47,8 @@ class TestNewFeature:
         status, lines = client.request_stream("POST", "/v1/chat/completions", json_body={...})
         assert status == 200
 ```
+
+Whether the test runs for a given model is decided by the model's **profile** (`model_profiles/{api_format}/{profile}/…yaml`), not by anything the user declares. If you introduce a new marker, update the relevant profile files — ideally by re-running `--ignore-profile` against the official endpoint and reclassifying PASS/FAIL results (do not assume PASS means supported). See [model_profiles/README.md](model_profiles/README.md) for the authoring workflow.
 
 ## Lint/type rules
 

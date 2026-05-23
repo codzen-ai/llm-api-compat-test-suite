@@ -13,14 +13,8 @@ if TYPE_CHECKING:
 
 class ModelConfig(BaseModel):
     name: str
-    capabilities: list[str] = ["chat"]
-
-    @model_validator(mode="before")
-    @classmethod
-    def accept_string(cls, data: Any) -> Any:
-        if isinstance(data, str):
-            return {"name": data}
-        return data
+    profile: str
+    profile_snapshot: str | None = None
 
 
 class ApiFormat(StrEnum):
@@ -72,20 +66,24 @@ class SuiteConfig(BaseModel):
         api_key: str,
         api_format: str,
         model: str | None = None,
+        profile: str | None = None,
+        profile_snapshot: str | None = None,
     ) -> SuiteConfig:
-        """Build config from CLI arguments for single-provider testing."""
+        """Build config from CLI arguments for single-provider testing.
+
+        ``profile`` is required whenever ``model`` is given — without it there
+        is no ground truth against which to filter capability markers.
+        """
         models: list[ModelConfig] = []
         if model:
+            if not profile:
+                msg = "--profile is required when --model is given"
+                raise ValueError(msg)
             models = [
                 ModelConfig(
                     name=model,
-                    capabilities=[
-                        "chat",
-                        "streaming",
-                        "tools",
-                        "vision",
-                        "embeddings",
-                    ],
+                    profile=profile,
+                    profile_snapshot=profile_snapshot,
                 )
             ]
 

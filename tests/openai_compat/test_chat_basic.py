@@ -50,6 +50,7 @@ class TestChatBasic:
 
         assert "finish_reason" in choice
 
+    @pytest.mark.capability("system_message")
     def test_system_message(self, client: LoggingHttpClient, model: str) -> None:
         """System + user message should work correctly."""
         status, body = client.request(
@@ -133,6 +134,7 @@ class TestChatBasic:
         if usage:
             assert usage.get("completion_tokens", 0) <= 20  # Allow some slack
 
+    @pytest.mark.capability("temperature")
     def test_temperature(self, client: LoggingHttpClient, model: str) -> None:
         """temperature parameter should be accepted."""
         status, body = client.request(
@@ -147,6 +149,7 @@ class TestChatBasic:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    @pytest.mark.capability("n_multi")
     def test_n_parameter(self, client: LoggingHttpClient, model: str) -> None:
         """n parameter should return multiple choices."""
         status, body = client.request(
@@ -222,6 +225,7 @@ class TestChatBasic:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    @pytest.mark.capability("max_completion_tokens")
     def test_max_completion_tokens(
         self, client: LoggingHttpClient, model: str
     ) -> None:
@@ -244,6 +248,7 @@ class TestChatBasic:
         if usage:
             assert usage.get("completion_tokens", 0) <= 20
 
+    @pytest.mark.capability("top_p")
     def test_top_p(self, client: LoggingHttpClient, model: str) -> None:
         """top_p parameter should be accepted."""
         status, body = client.request(
@@ -258,6 +263,7 @@ class TestChatBasic:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    @pytest.mark.capability("frequency_penalty")
     def test_frequency_penalty(
         self, client: LoggingHttpClient, model: str
     ) -> None:
@@ -274,6 +280,7 @@ class TestChatBasic:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    @pytest.mark.capability("presence_penalty")
     def test_presence_penalty(
         self, client: LoggingHttpClient, model: str
     ) -> None:
@@ -290,6 +297,7 @@ class TestChatBasic:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    @pytest.mark.capability("seed")
     def test_seed(self, client: LoggingHttpClient, model: str) -> None:
         """seed parameter should be accepted for deterministic output."""
         status, body = client.request(
@@ -351,6 +359,7 @@ class TestChatBasic:
 
         assert status == 200, f"Expected 200, got {status}: {body}"
 
+    @pytest.mark.capability("json_mode")
     def test_json_mode(self, client: LoggingHttpClient, model: str) -> None:
         """response_format=json_object should return valid JSON content."""
         status, body = client.request(

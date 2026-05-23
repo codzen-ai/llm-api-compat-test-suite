@@ -7,9 +7,61 @@ from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from config import ProviderConfig
+    from model_profile import ResolvedModel
+
+
+def _models_section(
+    provider: ProviderConfig,
+    resolved_models: list[ResolvedModel] | None,
+) -> list[str]:
+    """Render the per-model profile detail table, or nothing if no rows.
+
+    Each configured model gets one row listing the profile path, snapshot,
+    created_at, and whether the snapshot was pinned in config or auto-picked
+    as the latest by the registry. The point of the table is that a reader
+    can reconstruct *exactly* which ground-truth was used for a run.
+
+    Returns ``[]`` (no markdown emitted) when ``resolved_models`` is empty —
+    a header without rows would just be visual noise.
+    """
+    by_name: dict[str, ResolvedModel] = (
+        {rm.name: rm for rm in resolved_models} if resolved_models else {}
+    )
+
+    rows: list[str] = []
+    for m in provider.models:
+        rm = by_name.get(m.name)
+        if rm is None:
+            continue
+        p = rm.profile
+        try:
+            path_str = str(rm.source_path.relative_to(Path.cwd()))
+        except ValueError:
+            path_str = str(rm.source_path)
+        resolution = "pinned" if m.profile_snapshot else "auto-latest"
+        rows.append(
+            f"| {m.name} | `{path_str}` | {p.snapshot} "
+            f"| {p.created_at.isoformat()} | {resolution} |"
+        )
+
+    if not rows:
+        return []
+
+    return [
+        "## Models",
+        "",
+        "| Model | Profile | Snapshot | Created | Resolution |",
+        "|-------|---------|----------|---------|------------|",
+        *rows,
+        "",
+    ]
 
 
 class TestResult(BaseModel):
+    # Stop pytest from trying to collect this as a test class — its name
+    # starts with "Test" which triggers a PytestCollectionWarning otherwise.
+    __test__ = False
+
     node_id: str
     outcome: str  # "passed", "failed", "skipped", "error"
     duration: float
@@ -25,7 +77,9 @@ class ReportCollector(BaseModel):
         self.results.append(result)
 
     def generate_summary(
-        self, provider: ProviderConfig | None = None
+        self,
+        provider: ProviderConfig | None = None,
+        resolved_models: list[ResolvedModel] | None = None,
     ) -> Path:
         summary_path = self.report_dir / "summary.md"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -41,7 +95,6 @@ class ReportCollector(BaseModel):
         ]
 
         if provider:
-            models_str = ", ".join(m.name for m in provider.models)
             lines.extend([
                 "## Configuration",
                 "",
@@ -52,9 +105,9 @@ class ReportCollector(BaseModel):
                 f"| API Format | {provider.api_format} |",
                 f"| Auth Type | {provider.auth_type or 'auto'} |",
                 f"| Verify SSL | {provider.verify_ssl} |",
-                f"| Models | {models_str} |",
                 "",
             ])
+            lines.extend(_models_section(provider, resolved_models))
 
         lines.extend([
             "## Summary",

@@ -1,27 +1,29 @@
 from __future__ import annotations
 
 import datetime
-import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from config import ModelConfig, ProviderConfig, SuiteConfig
+from http_client import LoggingHttpClient
+from model_profile import (
+    ProfileNotFoundError,
+    ResolvedModel,
+    resolve_models,
+)
+from report import ReportCollector, TestResult
+
 if TYPE_CHECKING:
     from collections.abc import Generator
-
-# Allow importing from src/
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from config import ModelConfig, ProviderConfig, SuiteConfig  # noqa: E402
-from http_client import LoggingHttpClient  # noqa: E402
-from report import ReportCollector, TestResult  # noqa: E402
 
 # ── Global state ──────────────────────────────────────────────────────────────
 
 _suite_config: SuiteConfig | None = None
 _active_provider: ProviderConfig | None = None
 _active_models: list[ModelConfig] = []
+_resolved_models: list[ResolvedModel] = []
 _report_dir: Path = Path("reports")
 _collector = ReportCollector()
 
@@ -65,6 +67,25 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Model name to test (CLI override)",
     )
     group.addoption(
+        "--profile",
+        dest="profile",
+        default=None,
+        help=(
+            "Profile name (e.g. gpt-5.4-mini) to benchmark the model against. "
+            "Required in CLI mode when --model is given."
+        ),
+    )
+    group.addoption(
+        "--profile-snapshot",
+        dest="profile_snapshot",
+        default=None,
+        help=(
+            "Pin a specific profile snapshot — the YAML filename stem under "
+            "model_profiles/<api_format>/<profile>/ (e.g. 2025-03-15). "
+            "Omit for the latest by `created_at`."
+        ),
+    )
+    group.addoption(
         "--auth-type",
         dest="auth_type",
         default=None,
@@ -78,13 +99,26 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Disable SSL certificate verification",
     )
+    group.addoption(
+        "--ignore-profile",
+        dest="ignore_profile",
+        action="store_true",
+        default=False,
+        help=(
+            "Recording mode: run every capability-marked test regardless of "
+            "profile, so you can observe what a model really supports before "
+            "authoring its profile YAML. See "
+            "docs/profile-based-compatibility-testing.md."
+        ),
+    )
 
 
 # ── Configuration loading ─────────────────────────────────────────────────────
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    global _suite_config, _active_provider, _active_models, _report_dir, _collector  # noqa: PLW0603
+    global _suite_config, _active_provider, _active_models  # noqa: PLW0603
+    global _resolved_models, _report_dir, _collector  # noqa: PLW0603
 
     config_file: str | None = config.getoption("config_file")
     base_url: str | None = config.getoption("base_url")
@@ -99,12 +133,19 @@ def pytest_configure(config: pytest.Config) -> None:
         api_key: str = config.getoption("api_key") or ""
         api_format: str = config.getoption("api_format") or "openai"
         model_name: str | None = config.getoption("model")
-        _suite_config = SuiteConfig.from_cli(
-            base_url=base_url,
-            api_key=api_key,
-            api_format=api_format,
-            model=model_name,
-        )
+        profile_name: str | None = config.getoption("profile")
+        profile_snapshot: str | None = config.getoption("profile_snapshot")
+        try:
+            _suite_config = SuiteConfig.from_cli(
+                base_url=base_url,
+                api_key=api_key,
+                api_format=api_format,
+                model=model_name,
+                profile=profile_name,
+                profile_snapshot=profile_snapshot,
+            )
+        except ValueError as err:
+            raise pytest.UsageError(str(err)) from err
     else:
         return
 
@@ -118,6 +159,14 @@ def pytest_configure(config: pytest.Config) -> None:
             _active_models = [
                 m for m in _active_models if m.name == model_filter
             ]
+
+        try:
+            _resolved_models = resolve_models(
+                _active_provider.api_format,
+                _active_models,
+            )
+        except ProfileNotFoundError as err:
+            raise pytest.UsageError(str(err)) from err
 
     # Set up report directory
     timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
@@ -166,12 +215,14 @@ def pytest_collection_modifyitems(
 
 
 def _should_skip_for_capability(
-    item: pytest.Item, model: ModelConfig
+    item: pytest.Item, model: ResolvedModel
 ) -> str | None:
-    """Return skip reason if test requires a capability the model lacks."""
+    """Return skip reason if the test's capability marker is absent from the
+    model's profile-declared capabilities."""
+    effective = model.capabilities
     for marker in item.iter_markers("capability"):
         required: str | None = marker.args[0] if marker.args else None
-        if required and required not in model.capabilities:
+        if required and required not in effective:
             return f"Model '{model.name}' lacks capability '{required}'"
     return None
 
@@ -187,36 +238,46 @@ def provider_config() -> ProviderConfig:
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Dynamically parametrize model_config fixture based on loaded config."""
-    if "model_config" in metafunc.fixturenames:
-        models = _active_models if _active_models else [None]
+    """Dynamically parametrize resolved_model fixture based on loaded config."""
+    if "resolved_model" in metafunc.fixturenames:
+        models = _resolved_models if _resolved_models else [None]
         ids = [m.name if m else "no-model" for m in models]
-        metafunc.parametrize("model_config", models, ids=ids, indirect=True)
+        metafunc.parametrize("resolved_model", models, ids=ids, indirect=True)
 
 
 @pytest.fixture
-def model_config(request: pytest.FixtureRequest) -> ModelConfig:
-    model: ModelConfig | None = request.param
+def resolved_model(request: pytest.FixtureRequest) -> ResolvedModel:
+    model: ResolvedModel | None = request.param
     if model is None:
         pytest.skip("No models configured")
     return model
 
 
 @pytest.fixture
-def model(model_config: ModelConfig, request: pytest.FixtureRequest) -> str:
-    node: pytest.Item = request.node  # type: ignore[assignment]
-    skip_reason = _should_skip_for_capability(
-        node, model_config  # type: ignore[arg-type]
+def model(
+    resolved_model: ResolvedModel, request: pytest.FixtureRequest
+) -> str:
+    if request.config.getoption("ignore_profile"):
+        # Recording mode — bypass capability filtering so every marked test
+        # runs; results feed profile authoring.
+        return resolved_model.name
+    # pytest's stubs type `request.node` loosely (Item | Collector | Unknown);
+    # we know the fixture only runs against Items because the marker scan
+    # needs item-level metadata.
+    node = cast(
+        "pytest.Item",
+        request.node,  # pyright: ignore[reportUnknownMemberType]
     )
+    skip_reason = _should_skip_for_capability(node, resolved_model)
     if skip_reason:
         pytest.skip(skip_reason)
-    return model_config.name
+    return resolved_model.name
 
 
 @pytest.fixture
 def client(
     provider_config: ProviderConfig,
-    model_config: ModelConfig,
+    resolved_model: ResolvedModel,
     request: pytest.FixtureRequest,
 ) -> Generator[LoggingHttpClient]:
     api_format = provider_config.api_format
@@ -264,7 +325,7 @@ def client(
 
         lines = [
             f"Test: {node_id}",
-            f"Model: {model_config.name}",
+            f"Model: {resolved_model.name}",
             f"Provider: {provider_config.name}",
             f"Base URL: {provider_config.base_url}",
             "=" * 72,
@@ -313,7 +374,10 @@ def pytest_runtest_makereport(
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if _collector.results:
-        summary_path = _collector.generate_summary(provider=_active_provider)
+        summary_path = _collector.generate_summary(
+            provider=_active_provider,
+            resolved_models=_resolved_models,
+        )
         print(f"\n{'=' * 72}")  # noqa: T201
         print(f"Report: {summary_path}")  # noqa: T201
         print(f"Logs:   {_report_dir / 'logs'}")  # noqa: T201
