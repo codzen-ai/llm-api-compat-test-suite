@@ -6,7 +6,7 @@ Tests send raw HTTP requests in the official API format to the third-party endpo
 
 ## Features
 
-- **3 API formats**: OpenAI, Anthropic, Gemini — 43 test cases total
+- **3 API formats**: OpenAI, Anthropic, Gemini — 58 test cases total
 - **Raw HTTP testing**: Uses `httpx` directly (not SDKs) to verify HTTP-level compatibility
 - **Pydantic config validation**: Configuration is validated with Pydantic models, invalid values fail fast
 - **Profile-based capability filtering**: Each model is benchmarked against a hand-authored ground-truth profile (e.g. OpenAI's `gpt-5.4-mini`). Tests are filtered to the capability subset the reference model actually supports. See [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md).
@@ -17,9 +17,9 @@ Tests send raw HTTP requests in the official API format to the third-party endpo
 
 | API Format | Tests | Categories |
 |---|---|---|
-| OpenAI | 14 | chat, streaming, tool calling, vision, embeddings |
-| Anthropic | 13 | messages, streaming, tool use, vision |
-| Gemini | 11 | generateContent, streaming, function calling |
+| OpenAI | 28 | chat, streaming, tool calling, vision, embeddings |
+| Anthropic | 16 | messages, streaming, tool use, vision |
+| Gemini | 14 | generateContent, streaming, function calling |
 
 ## Quick Start
 
@@ -122,8 +122,8 @@ pytest tests/anthropic_compat/ \
        --api-format=anthropic \
        --auth-type=bearer \
        --no-verify-ssl \
-       --model=claude-haiku \
-       --profile=claude-haiku -v
+       --model=claude-haiku-4-5 \
+       --profile=claude-haiku-4-5 -v
 ```
 
 ## Model Capabilities
