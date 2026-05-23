@@ -6,7 +6,7 @@ Tests send raw HTTP requests in the official API format to the third-party endpo
 
 ## Features
 
-- **3 API formats**: OpenAI, Anthropic, Gemini — 61 test cases total
+- **3 API formats**: OpenAI, Anthropic, Gemini — 64 test cases total
 - **Raw HTTP testing**: Uses `httpx` directly (not SDKs) to verify HTTP-level compatibility
 - **Pydantic config validation**: Configuration is validated with Pydantic models, invalid values fail fast
 - **Profile-based capability filtering**: Each model is benchmarked against a hand-authored ground-truth profile (e.g. OpenAI's `gpt-5.4-mini`). Tests are filtered to the capability subset the reference model actually supports. See [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md).
@@ -17,9 +17,9 @@ Tests send raw HTTP requests in the official API format to the third-party endpo
 
 | API Format | Tests | Categories |
 |---|---|---|
-| OpenAI | 29 | chat, streaming, tool calling, vision, embeddings, performance |
-| Anthropic | 17 | messages, streaming, tool use, vision, performance |
-| Gemini | 15 | generateContent, streaming, function calling, performance |
+| OpenAI | 30 | chat, streaming, tool calling, vision, embeddings, performance |
+| Anthropic | 18 | messages, streaming, tool use, vision, performance |
+| Gemini | 16 | generateContent, streaming, function calling, performance |
 
 ## Quick Start
 
@@ -130,7 +130,7 @@ pytest tests/anthropic_compat/ \
 
 Capabilities are declared by **profiles**, not by users. A profile records what an official model snapshot (e.g. `gpt-5.4-mini`) actually supports; tests carrying a `@pytest.mark.capability("X")` marker are skipped if `X` is absent from the configured profile.
 
-Fine-grained markers currently in use: `chat`, `streaming`, `tools`, `vision`, `embeddings`, `max_tokens`, `max_completion_tokens`, `stop_sequences`, `n_multi`, `logprobs`, `seed`, `json_mode`, `system_message`, `temperature`, `top_p`, `frequency_penalty`, `presence_penalty`, `performance` (full list in [pyproject.toml](pyproject.toml)).
+Fine-grained markers currently in use: `chat`, `streaming`, `tools`, `vision`, `embeddings`, `max_tokens`, `max_completion_tokens`, `stop_sequences`, `n_multi`, `logprobs`, `seed`, `json_mode`, `json_schema`, `system_message`, `temperature`, `top_p`, `frequency_penalty`, `presence_penalty`, `performance` (full list in [pyproject.toml](pyproject.toml)).
 
 Authoring a new profile → see [model_profiles/README.md](model_profiles/README.md). Design rationale → see [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md).
 
