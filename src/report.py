@@ -14,41 +14,47 @@ def _models_section(
     provider: ProviderConfig,
     resolved_models: list[ResolvedModel] | None,
 ) -> list[str]:
-    """Render the per-model profile detail table.
+    """Render the per-model profile detail table, or nothing if no rows.
 
     Each configured model gets one row listing the profile path, snapshot,
     created_at, and whether the snapshot was pinned in config or auto-picked
     as the latest by the registry. The point of the table is that a reader
     can reconstruct *exactly* which ground-truth was used for a run.
-    """
-    lines = [
-        "## Models",
-        "",
-        "| Model | Profile | Snapshot | Created | Resolution |",
-        "|-------|---------|----------|---------|------------|",
-    ]
-    by_name: dict[str, ResolvedModel] = {}
-    if resolved_models:
-        by_name = {rm.name: rm for rm in resolved_models}
 
+    Returns ``[]`` (no markdown emitted) when ``resolved_models`` is empty —
+    a header without rows would just be visual noise.
+    """
+    by_name: dict[str, ResolvedModel] = (
+        {rm.name: rm for rm in resolved_models} if resolved_models else {}
+    )
+
+    rows: list[str] = []
     for m in provider.models:
         rm = by_name.get(m.name)
         if rm is None:
             continue
         p = rm.profile
-        path_str = "—"
-        if p.source_path is not None:
-            try:
-                path_str = str(p.source_path.relative_to(Path.cwd()))
-            except ValueError:
-                path_str = str(p.source_path)
+        try:
+            path_str = str(rm.source_path.relative_to(Path.cwd()))
+        except ValueError:
+            path_str = str(rm.source_path)
         resolution = "pinned" if m.profile_snapshot else "auto-latest"
-        lines.append(
+        rows.append(
             f"| {m.name} | `{path_str}` | {p.snapshot} "
             f"| {p.created_at.isoformat()} | {resolution} |"
         )
-    lines.append("")
-    return lines
+
+    if not rows:
+        return []
+
+    return [
+        "## Models",
+        "",
+        "| Model | Profile | Snapshot | Created | Resolution |",
+        "|-------|---------|----------|---------|------------|",
+        *rows,
+        "",
+    ]
 
 
 class TestResult(BaseModel):

@@ -30,8 +30,10 @@ def _make_profile(snapshot: str, caps: list[str]) -> ModelProfile:
         created_at=datetime.date(2026, 4, 18),
         source_endpoint="https://api.openai.com",
         capabilities=caps,
-        source_path=Path("model_profiles/openai/m/2026-04-18.yaml"),
     )
+
+
+_FAKE_SOURCE = Path("model_profiles/openai/m/2026-04-18.yaml")
 
 
 def _collector(tmp_path: Path) -> ReportCollector:
@@ -52,7 +54,9 @@ def test_report_lists_profile_metadata_auto_latest(tmp_path: Path) -> None:
     m = ModelConfig(name="m", profile="m")
     provider = _make_provider([m])
     profile = _make_profile("m-2026-04-18", ["chat"])
-    resolved = [ResolvedModel(config=m, profile=profile)]
+    resolved = [
+        ResolvedModel(config=m, profile=profile, source_path=_FAKE_SOURCE)
+    ]
 
     path = _collector(tmp_path).generate_summary(
         provider, resolved_models=resolved
@@ -68,10 +72,14 @@ def test_report_lists_profile_metadata_auto_latest(tmp_path: Path) -> None:
 
 
 def test_report_marks_pinned_when_snapshot_set(tmp_path: Path) -> None:
-    m = ModelConfig(name="m", profile="m", profile_snapshot="m-2026-04-18")
+    # profile_snapshot is the YAML filename stem (date), not the inner
+    # `snapshot:` field — see config.example.yaml.
+    m = ModelConfig(name="m", profile="m", profile_snapshot="2026-04-18")
     provider = _make_provider([m])
     profile = _make_profile("m-2026-04-18", ["chat"])
-    resolved = [ResolvedModel(config=m, profile=profile)]
+    resolved = [
+        ResolvedModel(config=m, profile=profile, source_path=_FAKE_SOURCE)
+    ]
 
     path = _collector(tmp_path).generate_summary(
         provider, resolved_models=resolved
@@ -81,9 +89,9 @@ def test_report_marks_pinned_when_snapshot_set(tmp_path: Path) -> None:
     assert "pinned" in text
 
 
-def test_report_handles_missing_resolved_models(tmp_path: Path) -> None:
-    """``resolved_models=None`` is degenerate (no conftest pairing happened);
-    rendering must not crash, and no per-model row should be fabricated."""
+def test_report_omits_models_section_without_resolved(tmp_path: Path) -> None:
+    """No resolved models → no `## Models` section at all (a header with
+    zero rows would be visual noise)."""
     provider = _make_provider([ModelConfig(name="m", profile="m")])
     text = (
         _collector(tmp_path)
@@ -91,9 +99,7 @@ def test_report_handles_missing_resolved_models(tmp_path: Path) -> None:
         .read_text()
     )
 
-    assert "## Models" in text
-    # Header present, but no data row for model "m"
-    assert "| m |" not in text
+    assert "## Models" not in text
 
 
 @pytest.mark.parametrize("count", [2, 3])
@@ -103,7 +109,11 @@ def test_report_renders_one_row_per_model(tmp_path: Path, count: int) -> None:
     ]
     provider = _make_provider(configs)
     resolved = [
-        ResolvedModel(config=c, profile=_make_profile(f"{c.name}-2026-04-18", ["chat"]))
+        ResolvedModel(
+            config=c,
+            profile=_make_profile(f"{c.name}-2026-04-18", ["chat"]),
+            source_path=_FAKE_SOURCE,
+        )
         for c in configs
     ]
 

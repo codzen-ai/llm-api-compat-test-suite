@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -80,8 +80,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         dest="profile_snapshot",
         default=None,
         help=(
-            "Pin a specific profile snapshot file "
-            "(e.g. 2025-03-15). Omit for latest."
+            "Pin a specific profile snapshot — the YAML filename stem under "
+            "model_profiles/<api_format>/<profile>/ (e.g. 2025-03-15). "
+            "Omit for the latest by `created_at`."
         ),
     )
     group.addoption(
@@ -256,14 +257,18 @@ def resolved_model(request: pytest.FixtureRequest) -> ResolvedModel:
 def model(
     resolved_model: ResolvedModel, request: pytest.FixtureRequest
 ) -> str:
-    node: pytest.Item = request.node  # type: ignore[assignment]
     if request.config.getoption("ignore_profile"):
         # Recording mode — bypass capability filtering so every marked test
         # runs; results feed profile authoring.
         return resolved_model.name
-    skip_reason = _should_skip_for_capability(
-        node, resolved_model  # type: ignore[arg-type]
+    # pytest's stubs type `request.node` loosely (Item | Collector | Unknown);
+    # we know the fixture only runs against Items because the marker scan
+    # needs item-level metadata.
+    node = cast(
+        "pytest.Item",
+        request.node,  # pyright: ignore[reportUnknownMemberType]
     )
+    skip_reason = _should_skip_for_capability(node, resolved_model)
     if skip_reason:
         pytest.skip(skip_reason)
     return resolved_model.name

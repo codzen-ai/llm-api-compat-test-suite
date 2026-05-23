@@ -14,7 +14,9 @@ providers:
     models:
       - name: "openai/gpt-5.4-mini"         # Third-party's model identifier
         profile: "gpt-5.4-mini"              # OpenAI model to benchmark against (see model_profiles/)
-        # profile_snapshot: "2025-03-15"    # Optional: pin a snapshot file; omit → latest
+        # profile_snapshot: "2025-03-15"    # Optional: filename stem under
+                                            # model_profiles/<api_format>/<profile>/;
+                                            # omit → latest by `created_at` field
 
   # Example: Test an Anthropic-compatible provider
   # - name: "my-anthropic-compat-provider"

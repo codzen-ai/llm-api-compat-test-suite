@@ -31,12 +31,17 @@ if TYPE_CHECKING:
 DEFAULT_PROFILES_ROOT = Path(__file__).resolve().parent.parent / "model_profiles"
 
 
-class ProfileNotFoundError(Exception):
+class ProfileNotFoundError(LookupError):
     """Raised when a requested profile (or snapshot) does not exist on disk."""
 
 
 class ModelProfile(BaseModel):
-    """Ground-truth capability surface for one model snapshot."""
+    """Ground-truth capability surface for one model snapshot.
+
+    Pure YAML schema — round-trips cleanly to/from disk. The path the YAML
+    was loaded from is tracked separately (see :class:`ProfileRegistry.load`'s
+    return type and :class:`ResolvedModel.source_path`).
+    """
 
     # `model` is a real field name in the YAML; disable pydantic's default
     # `model_`-prefix namespace protection. `extra="forbid"` catches typos
@@ -61,10 +66,6 @@ class ModelProfile(BaseModel):
     """Capability markers (see ``pyproject.toml`` markers list) the snapshot
     is known to support. Tests marked with a capability not listed here are
     skipped for this model."""
-
-    # Populated by the registry after validation; not part of the YAML schema.
-    # Excluded from dumps so a round-trip through YAML stays clean.
-    source_path: Path | None = None
 
 
 class ProfileRegistry:
@@ -102,8 +103,12 @@ class ProfileRegistry:
         api_format: ApiFormat | str,
         name: str,
         snapshot: str | None = None,
-    ) -> ModelProfile:
+    ) -> tuple[ModelProfile, Path]:
         """Load a profile. ``snapshot=None`` → latest by ``created_at``.
+
+        Returns the parsed profile and the YAML file it came from. The path
+        is returned separately rather than embedded in :class:`ModelProfile`
+        so the model stays a pure YAML schema.
 
         Raises :class:`ProfileNotFoundError` if the directory or snapshot is
         missing; the message lists viable alternatives at the same level so
@@ -130,7 +135,7 @@ class ProfileRegistry:
                     f"Available snapshots: {available_snaps or 'none'}"
                 )
                 raise ProfileNotFoundError(msg)
-            return self._load_file(path)
+            return self._load_file(path), path
 
         candidates = self.list_snapshot_files(api_format, name)
         if not candidates:
@@ -140,15 +145,14 @@ class ProfileRegistry:
             )
             raise ProfileNotFoundError(msg)
 
-        loaded = [self._load_file(p) for p in candidates]
-        loaded.sort(key=lambda prof: prof.created_at, reverse=True)
+        loaded = [(self._load_file(p), p) for p in candidates]
+        loaded.sort(key=lambda pair: pair[0].created_at, reverse=True)
         return loaded[0]
 
     def _load_file(self, path: Path) -> ModelProfile:
         with path.open() as f:
             data = yaml.safe_load(f)
-        profile = ModelProfile.model_validate(data)
-        return profile.model_copy(update={"source_path": path})
+        return ModelProfile.model_validate(data)
 
     # ── Introspection ────────────────────────────────────────────────────
 
@@ -164,9 +168,10 @@ class ProfileRegistry:
                 if not model_dir.is_dir():
                     continue
                 try:
-                    yield self.load(api_format, model_dir.name)
+                    profile, _ = self.load(api_format, model_dir.name)
                 except ProfileNotFoundError:
                     continue
+                yield profile
 
 
 # ── Resolved model (config + profile pairing) ────────────────────────────
@@ -177,6 +182,10 @@ class ResolvedModel(BaseModel):
 
     config: ModelConfig
     profile: ModelProfile
+    source_path: Path
+    """Path to the YAML the profile was loaded from — reported back so a
+    reader of ``reports/{ts}/summary.md`` can reconstruct the exact ground
+    truth used for a run."""
 
     @property
     def name(self) -> str:
@@ -201,6 +210,8 @@ def resolve_models(
     reg = registry if registry is not None else ProfileRegistry()
     resolved: list[ResolvedModel] = []
     for m in models:
-        profile = reg.load(api_format, m.profile, m.profile_snapshot)
-        resolved.append(ResolvedModel(config=m, profile=profile))
+        profile, path = reg.load(api_format, m.profile, m.profile_snapshot)
+        resolved.append(
+            ResolvedModel(config=m, profile=profile, source_path=path)
+        )
     return resolved

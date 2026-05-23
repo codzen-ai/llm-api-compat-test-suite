@@ -41,12 +41,23 @@ class TestSchema:
             tmp_path, "openai/gpt-4o/2024-08-06.yaml", VALID_YAML
         )
         registry = ProfileRegistry(root=tmp_path)
-        profile = registry.load("openai", "gpt-4o", "2024-08-06")
+        profile, source_path = registry.load("openai", "gpt-4o", "2024-08-06")
         assert isinstance(profile, ModelProfile)
         assert profile.model == "gpt-4o"
         assert profile.snapshot == "gpt-4o-2024-08-06"
         assert profile.capabilities == ["chat", "streaming"]
-        assert profile.source_path == path
+        assert source_path == path
+
+    def test_profile_dump_has_no_source_path(self, tmp_path: Path) -> None:
+        """The YAML schema must round-trip cleanly — runtime metadata (where
+        the file was loaded from) is kept on :class:`ResolvedModel`, not on
+        the profile itself, so ``model_dump()`` produces nothing the YAML
+        loader would later reject."""
+        _write_profile(tmp_path, "openai/gpt-4o/2024-08-06.yaml", VALID_YAML)
+        registry = ProfileRegistry(root=tmp_path)
+        profile, _ = registry.load("openai", "gpt-4o", "2024-08-06")
+        dumped = profile.model_dump()
+        assert "source_path" not in dumped
 
     def test_missing_field_raises(self, tmp_path: Path) -> None:
         bad = VALID_YAML.replace("snapshot: gpt-4o-2024-08-06\n", "")
@@ -75,9 +86,9 @@ class TestLatestResolution:
         )
 
         registry = ProfileRegistry(root=tmp_path)
-        latest = registry.load("openai", "gpt-4o")
+        latest, source_path = registry.load("openai", "gpt-4o")
         assert latest.snapshot == "gpt-4o-2025-03-15"
-        assert latest.source_path == newer_path
+        assert source_path == newer_path
 
     def test_pin_snapshot(self, tmp_path: Path) -> None:
         _write_profile(tmp_path, "openai/gpt-4o/2024-08-06.yaml", VALID_YAML)
@@ -87,7 +98,7 @@ class TestLatestResolution:
         _write_profile(tmp_path, "openai/gpt-4o/2025-03-15.yaml", newer)
 
         registry = ProfileRegistry(root=tmp_path)
-        pinned = registry.load("openai", "gpt-4o", "2024-08-06")
+        pinned, _ = registry.load("openai", "gpt-4o", "2024-08-06")
         assert pinned.snapshot == "gpt-4o-2024-08-06"
 
 
@@ -124,10 +135,10 @@ class TestSampleProfile:
 
     def test_default_registry_loads_sample(self) -> None:
         registry = ProfileRegistry()
-        profile = registry.load("openai", "gpt-5.4-mini")
+        profile, source_path = registry.load("openai", "gpt-5.4-mini")
         assert profile.model == "gpt-5.4-mini"
         assert "chat" in profile.capabilities
-        assert profile.source_path is not None
+        assert source_path.name.endswith(".yaml")
 
 
 # ── ResolvedModel / resolve_models ────────────────────────────────────────
@@ -153,20 +164,23 @@ class TestModelConfigProfileFields:
 
 class TestResolvedModel:
     def test_capabilities_come_from_profile(self, tmp_path: Path) -> None:
-        _write_profile(
+        path = _write_profile(
             tmp_path, "openai/gpt-4o/2024-08-06.yaml", VALID_YAML
         )
         reg = ProfileRegistry(root=tmp_path)
-        profile = reg.load("openai", "gpt-4o")
+        profile, source_path = reg.load("openai", "gpt-4o")
         cfg = ModelConfig(name="gpt-4o", profile="gpt-4o")
-        resolved = ResolvedModel(config=cfg, profile=profile)
+        resolved = ResolvedModel(
+            config=cfg, profile=profile, source_path=source_path
+        )
         assert resolved.capabilities == ["chat", "streaming"]
         assert resolved.name == "gpt-4o"
+        assert resolved.source_path == path
 
 
 class TestResolveModels:
     def test_loads_profiles(self, tmp_path: Path) -> None:
-        _write_profile(
+        path = _write_profile(
             tmp_path, "openai/gpt-4o/2024-08-06.yaml", VALID_YAML
         )
         reg = ProfileRegistry(root=tmp_path)
@@ -174,6 +188,7 @@ class TestResolveModels:
         resolved = resolve_models("openai", [cfg], registry=reg)
         assert len(resolved) == 1
         assert resolved[0].profile.snapshot == "gpt-4o-2024-08-06"
+        assert resolved[0].source_path == path
 
     def test_missing_profile_raises(self, tmp_path: Path) -> None:
         """No silent fallback — the caller (conftest) must surface a UsageError."""
@@ -181,3 +196,8 @@ class TestResolveModels:
         cfg = ModelConfig(name="weird", profile="nope")
         with pytest.raises(ProfileNotFoundError):
             resolve_models("openai", [cfg], registry=reg)
+
+    def test_profile_not_found_is_lookup_error(self) -> None:
+        """``ProfileNotFoundError`` inherits from ``LookupError`` so callers
+        can ``except LookupError`` to handle missing-resource errors generically."""
+        assert issubclass(ProfileNotFoundError, LookupError)
