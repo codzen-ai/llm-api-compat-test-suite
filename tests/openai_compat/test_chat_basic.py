@@ -383,3 +383,49 @@ class TestChatBasic:
         content = body["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         assert isinstance(parsed, dict)
+
+    @pytest.mark.capability("json_schema")
+    def test_json_schema(self, client: LoggingHttpClient, model: str) -> None:
+        """response_format=json_schema with strict:true should return JSON
+        conforming to the declared schema."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "population": {"type": "integer"},
+            },
+            "required": ["city", "population"],
+            "additionalProperties": False,
+        }
+        status, body = client.request(
+            "POST",
+            "/v1/chat/completions",
+            json_body={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Return data for Tokyo as JSON.",
+                    },
+                ],
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "city_info",
+                        "schema": schema,
+                        "strict": True,
+                    },
+                },
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        assert isinstance(body, dict)
+        content = body["choices"][0]["message"]["content"]
+        parsed = json.loads(content)
+        assert isinstance(parsed, dict)
+        assert set(parsed.keys()) == {"city", "population"}, (
+            f"Strict schema violation: extra/missing keys in {parsed}"
+        )
+        assert isinstance(parsed["city"], str)
+        assert isinstance(parsed["population"], int)

@@ -28,6 +28,7 @@ capabilities:
   - presence_penalty
   - seed
   - json_mode
+  - json_schema
   - performance
   # Deliberately omitted:
   #   - max_tokens        — gpt-5.x requires max_completion_tokens

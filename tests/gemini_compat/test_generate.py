@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -186,6 +187,40 @@ class TestGenerateContent:
         )
 
         assert status == 200, f"Expected 200, got {status}: {body}"
+
+    @pytest.mark.capability("json_schema")
+    def test_response_schema(self, client: LoggingHttpClient, model: str) -> None:
+        """responseMimeType=application/json with responseSchema should return
+        JSON conforming to the declared schema."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "population": {"type": "integer"},
+            },
+            "required": ["city", "population"],
+        }
+        status, body = client.request(
+            "POST",
+            f"/v1beta/models/{model}:generateContent",
+            json_body={
+                "contents": [
+                    {"role": "user", "parts": [{"text": "Return data for Tokyo."}]},
+                ],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": schema,
+                },
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        assert isinstance(body, dict)
+        text: Any = body["candidates"][0]["content"]["parts"][0]["text"]
+        parsed: Any = json.loads(text)
+        assert isinstance(parsed, dict)
+        assert "city" in parsed and isinstance(parsed["city"], str)
+        assert "population" in parsed and isinstance(parsed["population"], int)
 
     def test_safety_ratings(self, client: LoggingHttpClient, model: str) -> None:
         """Response candidates should include safety ratings."""

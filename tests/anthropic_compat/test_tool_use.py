@@ -128,3 +128,52 @@ class TestToolUse:
         text_blocks: list[Any] = [b for b in content2 if b["type"] == "text"]
         assert len(text_blocks) > 0, "No text block in tool result response"
         assert len(text_blocks[0]["text"]) > 0
+
+    @pytest.mark.capability("json_schema")
+    def test_structured_output_via_forced_tool(
+        self, client: LoggingHttpClient, model: str
+    ) -> None:
+        """Anthropic's documented structured-output pattern: declare a tool
+        whose input_schema is the desired output shape, and force the model
+        to call it via tool_choice. The tool_use.input must conform."""
+        city_info_tool = {
+            "name": "record_city_info",
+            "description": "Record structured information about a city.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string"},
+                    "population": {"type": "integer"},
+                },
+                "required": ["city", "population"],
+            },
+        }
+        status, body = client.request(
+            "POST",
+            "/v1/messages",
+            json_body={
+                "model": model,
+                "max_tokens": 1024,
+                "messages": [
+                    {"role": "user", "content": "Record data for Tokyo."},
+                ],
+                "tools": [city_info_tool],
+                "tool_choice": {"type": "tool", "name": "record_city_info"},
+            },
+        )
+
+        assert status == 200, f"Expected 200, got {status}: {body}"
+        assert isinstance(body, dict)
+        content: Any = body["content"]
+        tool_use_blocks: list[Any] = [b for b in content if b.get("type") == "tool_use"]
+        assert len(tool_use_blocks) > 0, "Forced tool_choice produced no tool_use block"
+
+        block: Any = tool_use_blocks[0]
+        assert block["name"] == "record_city_info"
+        payload: Any = block["input"]
+        assert isinstance(payload, dict)
+        assert set(payload.keys()) >= {"city", "population"}, (
+            f"Schema violation: missing required keys in {payload}"
+        )
+        assert isinstance(payload["city"], str)
+        assert isinstance(payload["population"], int)
