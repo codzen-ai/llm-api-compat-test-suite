@@ -63,6 +63,12 @@ class TestResult(BaseModel):
     __test__ = False
 
     node_id: str
+    model_name: str
+    """Name of the model this result belongs to. Used by the top-level
+    ``index.md`` writer to aggregate counts per model. Each per-model
+    ``ReportCollector`` only holds results for one model, but storing the
+    name on the result makes it self-describing for downstream tooling."""
+
     outcome: str  # "passed", "failed", "skipped", "error"
     duration: float
     log_file: Path | None = None
@@ -205,3 +211,77 @@ class ReportCollector(BaseModel):
 
         summary_path.write_text("\n".join(lines), encoding="utf-8")
         return summary_path
+
+
+def write_index(
+    report_dir: Path,
+    provider: ProviderConfig,
+    resolved_models: list[ResolvedModel],
+    collectors: dict[str, ReportCollector],
+) -> Path:
+    """Write the top-level ``index.md`` for a multi-model run.
+
+    Lists each configured model with its profile, capability count, and
+    raw pass/fail/skip/error counts. Deliberately omits any pass-rate
+    column to avoid inviting cross-model comparison — models with
+    different capability sets are not directly comparable, and the
+    Capabilities column signals that.
+
+    Models with no recorded results (e.g. every capability was filtered
+    out by their profile) still appear with zero counts so that
+    "configured but didn't run anything" is auditable rather than silent.
+    """
+    index_path = report_dir / "index.md"
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        f"# Run {report_dir.name}",
+        "",
+        "## Configuration",
+        "",
+        "| Key | Value |",
+        "|-----|-------|",
+        f"| Provider | {provider.name} |",
+        f"| Base URL | `{provider.base_url}` |",
+        f"| API Format | {provider.api_format} |",
+        "",
+        "## Models",
+        "",
+        (
+            "| Model | Profile | Capabilities | Passed | Failed | "
+            "Skipped | Error | Summary |"
+        ),
+        (
+            "|-------|---------|--------------|--------|--------|"
+            "---------|-------|---------|"
+        ),
+    ]
+
+    for rm in resolved_models:
+        collector = collectors.get(rm.name)
+        passed = failed = skipped = errored = 0
+        link = ""
+        if collector is not None:
+            for r in collector.results:
+                if r.outcome == "passed":
+                    passed += 1
+                elif r.outcome == "failed":
+                    failed += 1
+                elif r.outcome == "skipped":
+                    skipped += 1
+                elif r.outcome == "error":
+                    errored += 1
+            try:
+                rel = collector.report_dir.relative_to(report_dir)
+            except ValueError:
+                rel = collector.report_dir
+            link = f"[summary]({rel}/summary.md)"
+        caps = len(rm.capabilities)
+        lines.append(
+            f"| {rm.name} | {rm.profile.snapshot} | {caps} "
+            f"| {passed} | {failed} | {skipped} | {errored} | {link} |"
+        )
+
+    lines.append("")
+    index_path.write_text("\n".join(lines), encoding="utf-8")
+    return index_path

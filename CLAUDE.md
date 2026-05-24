@@ -23,9 +23,9 @@ uv run pytest --config --ignore-profile -v   # Recording mode: bypass capability
 ### Data flow
 
 1. **Config** (`--config` loads YAML, or `--base-url`/`--api-key`/`--api-format` for CLI mode) → `src/config.py` Pydantic models
-2. **conftest.py** reads config into globals, dynamically parametrizes tests per model via `pytest_generate_tests()`, builds auth headers, creates `LoggingHttpClient`
+2. **conftest.py** reads config into globals, dynamically parametrizes tests per model via `pytest_generate_tests()`, builds auth headers, creates `LoggingHttpClient`, and creates one `ReportCollector` per configured model
 3. **Test files** receive `client: LoggingHttpClient` and `model: str` fixtures, make raw HTTP requests, assert on response structure
-4. **On teardown**, client fixture writes per-test `.log` files; `pytest_sessionfinish` generates `reports/{timestamp}/summary.md`
+4. **On teardown**, client fixture writes per-test `.log` files into `reports/{timestamp}/{model}/logs/`; `pytest_sessionfinish` writes one `summary.md` per model under its subdirectory plus a top-level `reports/{timestamp}/index.md` listing all models — see [docs/multi-model-report-layout.md](docs/multi-model-report-layout.md) for why the per-model split exists and why the index deliberately omits a pass-rate column
 
 ### Key non-obvious patterns
 
@@ -34,6 +34,7 @@ uv run pytest --config --ignore-profile -v   # Recording mode: bypass capability
 - **Auth override chain**: CLI `--auth-type` > config `auth_type` field > default from `api_format` (bearer/x-api-key/x-goog-api-key)
 - **`--config` with no value** defaults to `config.yaml` (uses `nargs="?"` + `const`)
 - `--profile <name>` is required (YAML per-model or CLI flag); capabilities are read from `model_profiles/{api_format}/{profile}/…yaml`, not user-declared — see [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md)
+- **Reports are split per-model**: `reports/{ts}/{model}/{summary.md + logs/}` plus a top-level `index.md`. The index lists models but does not compute pass rates because different models typically have different capability sets — see [docs/multi-model-report-layout.md](docs/multi-model-report-layout.md)
 - `src/` and `tests/` are on `sys.path` via `pythonpath = ["src", "tests"]` in [pyproject.toml](pyproject.toml), so modules import as `from config import ...` / `from fixtures import ...` (not package imports)
 
 ### Adding a new test
