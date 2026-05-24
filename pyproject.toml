@@ -9,6 +9,8 @@ dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
     "pytest>=8.0",
+    "rich>=13.7",
+    "tabulate>=0.9",
 ]
 
 [dependency-groups]
@@ -44,12 +46,16 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "TCH"]  # assert + runtime fixture imports in tests
-"unit_tests/**/*.py" = ["S101", "TCH"]
+"unit_tests/**/*.py" = ["S101", "S311", "TCH"]
 "conftest.py" = ["S101", "T201"]   # assert + print in conftest
+# scripts/ are operator-facing CLIs: random.Random for sampling (S311) and
+# defensive asserts on internal invariants (S101) are intentional.
+"scripts/**/*.py" = ["S101", "S311"]
 
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
+extraPaths = ["src", "tests", "scripts"]
 
 # Tests work with dynamic JSON — suppress Unknown propagation from dict[str, Any]
 [[tool.pyright.executionEnvironments]]
@@ -63,10 +69,14 @@ root = "unit_tests"
 reportUnknownVariableType = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
+# Tests legitimately reach into module internals (underscore-prefixed
+# helpers); disabling reportPrivateUsage avoids forcing a public API
+# surface just to be testable.
+reportPrivateUsage = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "unit_tests"]
-pythonpath = ["src", "tests"]
+pythonpath = ["src", "tests", "scripts"]
 markers = [
     # Names must match entries in model_profiles/.../*.yaml capabilities lists.
     # New markers are introduced alongside the test that depends on them;

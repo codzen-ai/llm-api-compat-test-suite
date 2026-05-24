@@ -7,7 +7,7 @@ model are measured against the same subset.
 
 Profiles live in ``model_profiles/{api_format}/{model_name}/{snapshot}.yaml``
 and are hand-authored (AI-assisted). No automated recording — "PASS = supported"
-is the wrong inference; see docs/profile-based-compatibility-testing.md.
+is the wrong inference; see docs/design/profile-based-compatibility-testing.md.
 """
 
 from __future__ import annotations

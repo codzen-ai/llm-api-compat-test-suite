@@ -9,7 +9,7 @@ Tests send raw HTTP requests in the official API format to the third-party endpo
 - **3 API formats**: OpenAI, Anthropic, Gemini — 70 test cases total
 - **Raw HTTP testing**: Uses `httpx` directly (not SDKs) to verify HTTP-level compatibility
 - **Pydantic config validation**: Configuration is validated with Pydantic models, invalid values fail fast
-- **Profile-based capability filtering**: Each model is benchmarked against a hand-authored ground-truth profile (e.g. OpenAI's `gpt-5.4-mini`). Tests are filtered to the capability subset the reference model actually supports. See [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md).
+- **Profile-based capability filtering**: Each model is benchmarked against a hand-authored ground-truth profile (e.g. OpenAI's `gpt-5.4-mini`). Tests are filtered to the capability subset the reference model actually supports. See [docs/design/profile-based-compatibility-testing.md](/docs/design/profile-based-compatibility-testing.md).
 - **Per-test HTTP logs**: Every request/response pair saved to individual `.log` files
 - **Markdown summary report**: Generated automatically after each run, annotated with the profile baseline used
 
@@ -53,7 +53,7 @@ providers:
 
 `profile` points at a YAML under `model_profiles/{api_format}/{profile}/…yaml` that records what the official reference model supports. Capability filtering is driven by that file — users do not declare capabilities themselves.
 
-Ready-to-use configs live in [`configs/`](configs/): `configs/openai.yaml`, `configs/anthropic.yaml`, `configs/openrouter.yaml`. Set the matching `*_API_KEY` env var and run `pytest --config configs/openai.yaml -v` (etc.).
+Ready-to-use configs live in [`configs/`](/configs/): `configs/openai.yaml`, `configs/anthropic.yaml`, `configs/openrouter.yaml`. Set the matching `*_API_KEY` env var and run `pytest --config configs/openai.yaml -v` (etc.).
 
 **Option B: CLI arguments** (quick single-provider testing)
 
@@ -70,7 +70,7 @@ pytest --base-url=https://api.example.com \
 - `--profile-snapshot=YYYY-MM-DD` — Pin a specific profile snapshot file; omit for latest
 - `--auth-type=bearer|x-api-key|x-goog-api-key` — Override auth header type (default: auto from api-format)
 - `--no-verify-ssl` — Disable SSL certificate verification (for self-signed certs)
-- `--ignore-profile` — Recording mode: run every capability-marked test regardless of profile. Used when authoring a new profile; see [model_profiles/README.md](model_profiles/README.md).
+- `--ignore-profile` — Recording mode: run every capability-marked test regardless of profile. Used when authoring a new profile; see [model_profiles/README.md](/model_profiles/README.md).
 
 ### CLI Options
 
@@ -130,11 +130,11 @@ pytest tests/anthropic_compat/ \
 
 Capabilities are declared by **profiles**, not by users. A profile records what an official model snapshot (e.g. `gpt-5.4-mini`) actually supports; tests carrying a `@pytest.mark.capability("X")` marker are skipped if `X` is absent from the configured profile.
 
-Fine-grained markers currently in use: `chat`, `streaming`, `tools`, `vision`, `embeddings`, `max_tokens`, `max_completion_tokens`, `stop_sequences`, `n_multi`, `logprobs`, `seed`, `json_mode`, `json_schema`, `system_message`, `temperature`, `top_p`, `frequency_penalty`, `presence_penalty`, `performance`, `thinking` (full list in [pyproject.toml](pyproject.toml)).
+Fine-grained markers currently in use: `chat`, `streaming`, `tools`, `vision`, `embeddings`, `max_tokens`, `max_completion_tokens`, `stop_sequences`, `n_multi`, `logprobs`, `seed`, `json_mode`, `json_schema`, `system_message`, `temperature`, `top_p`, `frequency_penalty`, `presence_penalty`, `performance`, `thinking` (full list in [pyproject.toml](/pyproject.toml)).
 
 The `thinking` marker covers extended reasoning across all three formats: Anthropic's `thinking: {type: enabled, ...}`, OpenAI's `reasoning_effort`, and Gemini's `generationConfig.thinkingConfig`. A model is considered to support it only if it both accepts the parameter and actually emits thinking output (visible in `content[].type=thinking` / `usage.completion_tokens_details.reasoning_tokens` / `usageMetadata.thoughtsTokenCount`) — silent parameter-drop is a common pseudo-compatibility failure.
 
-Authoring a new profile → see [model_profiles/README.md](model_profiles/README.md). Design rationale → see [docs/profile-based-compatibility-testing.md](docs/profile-based-compatibility-testing.md).
+Authoring a new profile → see [model_profiles/README.md](/model_profiles/README.md). Design rationale → see [docs/design/profile-based-compatibility-testing.md](/docs/design/profile-based-compatibility-testing.md).
 
 ## Reports
 

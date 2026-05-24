@@ -4,11 +4,11 @@
 
 让 **OpenAI 官方 `gpt-5.4-mini`** 在跑完 `uv run pytest --config -v` 后，所有**适用于该模型的**测试全部通过，不适用的被合法 skip（而不是 FAIL）。
 
-这是 [基于 Profile 的兼容性测试方案](profile-based-compatibility-testing.md) 的前置工作。本 PR **不引入 profile 基础设施**，只利用现有的用户声明 capability 机制，先把测试本身的质量问题和交叉依赖问题解决掉。
+这是 [基于 Profile 的兼容性测试方案](/docs/design/profile-based-compatibility-testing.md) 的前置工作。本 PR **不引入 profile 基础设施**，只利用现有的用户声明 capability 机制，先把测试本身的质量问题和交叉依赖问题解决掉。
 
 ## 基线
 
-参照报告：[reports/20260418_124634/summary.md](../reports/20260418_124634/summary.md) —— 5 failed / 26 total on `gpt-5.4-mini`（OpenAI 官方端点）。
+参照报告：[reports/20260418_124634/summary.md](/reports/20260418_124634/summary.md) —— 5 failed / 26 total on `gpt-5.4-mini`（OpenAI 官方端点）。
 
 ## 失败归类
 
@@ -21,7 +21,7 @@
 | `test_image_url_with_detail` | 同上 | (a) fixture 错 |
 
 - **(a) 测试写错** → 改测试
-- **(b) 模型不支持** → 加细粒度 capability marker，靠 [config.yaml](../config.yaml) 的 capabilities 声明驱动 skip
+- **(b) 模型不支持** → 加细粒度 capability marker，靠 [config.yaml](/config.yaml) 的 capabilities 声明驱动 skip
 
 ## 工作流约束（重要）
 
@@ -38,10 +38,10 @@ uv run pytest tests/openai_compat/<file>.py::<TestClass>::<test_name> --config -
 
 ### 1. 修复 vision fixture（(a) 类）
 
-**文件**：[tests/openai_compat/test_vision.py](../tests/openai_compat/test_vision.py)
+**文件**：[tests/openai_compat/test_vision.py](/tests/openai_compat/test_vision.py)
 
-- [test_vision.py:10-13](../tests/openai_compat/test_vision.py#L10-L13) 的 `TINY_PNG_B64` 是 1×1 红色 PNG，OpenAI 视觉端拒绝。换成至少 32×32 的合法 PNG（纯色或简单渐变皆可）
-- [test_vision.py:41,76](../tests/openai_compat/test_vision.py#L41) 的 `max_tokens: 100` → 改成 `max_completion_tokens: 100`（gpt-4o 和 gpt-5.4-mini 都接受 `max_completion_tokens`，向前兼容）
+- [test_vision.py:10-13](/tests/openai_compat/test_vision.py#L10-L13) 的 `TINY_PNG_B64` 是 1×1 红色 PNG，OpenAI 视觉端拒绝。换成至少 32×32 的合法 PNG（纯色或简单渐变皆可）
+- [test_vision.py:41,76](/tests/openai_compat/test_vision.py#L41) 的 `max_tokens: 100` → 改成 `max_completion_tokens: 100`（gpt-4o 和 gpt-5.4-mini 都接受 `max_completion_tokens`，向前兼容）
 
 **验证**：只跑这两个 vision 测试
 ```bash
@@ -53,7 +53,7 @@ uv run pytest tests/openai_compat/test_vision.py::TestVision::test_image_url_inp
 
 ### 2. 修复 test_logprobs 交叉依赖（(a) 类）
 
-**文件**：[tests/openai_compat/test_chat_basic.py:307-335](../tests/openai_compat/test_chat_basic.py#L307-L335)
+**文件**：[tests/openai_compat/test_chat_basic.py:307-335](/tests/openai_compat/test_chat_basic.py#L307-L335)
 
 - 第 317 行 `"max_tokens": 10` → `"max_completion_tokens": 10`
 - 这样测试只考察 `logprobs`，不再绑定 `max_tokens` 能力
@@ -81,7 +81,7 @@ uv run pytest tests/openai_compat/test_chat_basic.py::TestChatBasic::test_logpro
 
 ### 4. 更新 config.yaml
 
-**文件**：[config.yaml](../config.yaml)
+**文件**：[config.yaml](/config.yaml)
 
 gpt-5.4-mini 的 `capabilities` 列表显式**不包含** `max_tokens`、`stop_sequences`、`logprobs`：
 
