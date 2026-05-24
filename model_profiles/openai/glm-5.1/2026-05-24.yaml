@@ -1,0 +1,56 @@
+# Capability surface for GLM-5.1 served via an OpenAI-format gateway.
+#
+# Derived from the gpt-5.4-mini profile minus `thinking`, after probing
+# https://aigc-llm.mgtv.com on 2026-05-24:
+#   * The LiteLLM gateway rejects `reasoning_effort` and top-level `thinking`
+#     with `litellm.UnsupportedParamsError: openai does not support
+#     parameters: [...]` — so the OpenAI-standard thinking toggle is not
+#     compatible on this surface.
+#   * Underlying GLM-5.1 is an always-reasoning model (it emits
+#     `reasoning_content` and non-zero `usage.completion_tokens_details.
+#     reasoning_tokens` even with no thinking parameter at all), but that is
+#     a different capability than "honors `reasoning_effort`".
+#
+# Other capabilities are inherited from gpt-5.4-mini without independent
+# verification against an official Z.AI endpoint. Re-record via
+# `--ignore-profile` against open.bigmodel.cn (or another Z.AI-owned
+# endpoint) when available, then re-classify per model_profiles/README.md.
+
+model: glm-5.1
+snapshot: glm-5.1-2026-05-24
+api_format: openai
+created_at: 2026-05-24
+source_endpoint: https://aigc-llm.mgtv.com
+
+capabilities:
+  - chat
+  - streaming
+  - tools
+  - vision
+  - max_completion_tokens
+  - system_message
+  - temperature
+  - top_p
+  - frequency_penalty
+  - presence_penalty
+  - seed
+  - json_mode
+  - performance
+  # Deliberately omitted (verified against mgtv on 2026-05-24):
+  #   - thinking          — `reasoning_effort` rejected by gateway (see header)
+  #   - n_multi           — `n: 2` returns 400
+  #   - logprobs          — 400 with "The parameters `logprobs` is not supported"
+  #   - json_schema       — 200 but `strict: true` not honored; model returns
+  #                         extra keys outside the declared schema (so the
+  #                         contract of json_schema vs json_mode is broken).
+  #                         json_mode itself still works, so kept above.
+  # Inherited-assumption omissions from gpt-5.4-mini (not independently
+  # tested but expected to also be unsupported on the LiteLLM/openai surface):
+  #   - max_tokens        — gpt-5.x family uses max_completion_tokens
+  #   - stop_sequences    — gpt-5.x family rejects `stop`
+
+# Default latency budget for the profile. Per-model overrides in the user's
+# config.yaml (`performance: {ttft_ms, tpot_ms}`) take precedence.
+performance:
+  ttft_ms: 1500
+  tpot_ms: 80
