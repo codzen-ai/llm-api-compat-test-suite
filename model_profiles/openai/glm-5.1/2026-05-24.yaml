@@ -52,5 +52,5 @@ capabilities:
 # Default latency budget for the profile. Per-model overrides in the user's
 # config.yaml (`performance: {ttft_ms, tpot_ms}`) take precedence.
 performance:
-  ttft_ms: 1500
-  tpot_ms: 80
+  ttft_ms: 3000
+  tpot_ms: 30
