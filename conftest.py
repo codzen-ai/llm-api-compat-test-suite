@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import io
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -15,7 +16,7 @@ from model_profile import (
     ResolvedModel,
     resolve_models,
 )
-from report import ReportCollector, TestResult
+from report import ReportCollector, TestResult, write_index
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -27,7 +28,46 @@ _active_provider: ProviderConfig | None = None
 _active_models: list[ModelConfig] = []
 _resolved_models: list[ResolvedModel] = []
 _report_dir: Path = Path("reports")
-_collector = ReportCollector()
+_collectors: dict[str, ReportCollector] = {}  # key: ResolvedModel.name
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+_SLUG_INVALID = re.compile(r"[^a-zA-Z0-9._-]")
+
+
+def _model_slug(name: str) -> str:
+    """Slugify a model name for use as a directory segment. Path-unsafe
+    characters become ``_``; an entirely-invalid name raises UsageError
+    rather than silently producing an empty segment."""
+    slug = _SLUG_INVALID.sub("_", name).strip("_.")
+    if not slug:
+        msg = f"Model name {name!r} produces an empty slug"
+        raise pytest.UsageError(msg)
+    return slug
+
+
+def _safe_node_id(node_id: str) -> str:
+    """Slugify a pytest node_id into a filename. The trailing pytest
+    parametrize ``[...]`` group (always the model name in this project,
+    since the conftest is the only place that parametrizes anything) is
+    stripped — once the file lives in a per-model subdirectory, the
+    suffix is redundant."""
+    safe = node_id.replace("/", "__").replace("::", "__")
+    return re.sub(r"\[[^\]]+\]$", "", safe)
+
+
+def _model_for_item(item: pytest.Item) -> ResolvedModel | None:
+    """Return the ResolvedModel that this parametrized item belongs to,
+    or None if the item is not part of the compat parametrization (e.g.
+    a unit test)."""
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return None
+    params = cast("dict[str, Any]", callspec.params)
+    rm = params.get("resolved_model")
+    return rm if isinstance(rm, ResolvedModel) else None
 
 
 # ── CLI options ───────────────────────────────────────────────────────────────
@@ -120,7 +160,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     global _suite_config, _active_provider, _active_models  # noqa: PLW0603
-    global _resolved_models, _report_dir, _collector  # noqa: PLW0603
+    global _resolved_models, _report_dir, _collectors  # noqa: PLW0603
 
     config_file: str | None = config.getoption("config_file")
     base_url: str | None = config.getoption("base_url")
@@ -170,12 +210,23 @@ def pytest_configure(config: pytest.Config) -> None:
         except ProfileNotFoundError as err:
             raise pytest.UsageError(str(err)) from err
 
-    # Set up report directory
+    # Skip report directory setup if there's no provider — running unit
+    # tests or `--collect-only` without compat config should not litter
+    # disk with an empty timestamped reports/ folder.
+    if not _resolved_models:
+        return
+
+    # Set up report directory: one timestamp dir, with a per-model
+    # subdirectory holding that model's summary + logs.
     timestamp = datetime.datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
     _report_dir = Path("reports") / timestamp
     _report_dir.mkdir(parents=True, exist_ok=True)
-    (_report_dir / "logs").mkdir(exist_ok=True)
-    _collector = ReportCollector(report_dir=_report_dir)
+
+    _collectors = {}
+    for rm in _resolved_models:
+        model_dir = _report_dir / _model_slug(rm.name)
+        (model_dir / "logs").mkdir(parents=True, exist_ok=True)
+        _collectors[rm.name] = ReportCollector(report_dir=model_dir)
 
 
 # ── Test collection filtering ─────────────────────────────────────────────────
@@ -321,8 +372,9 @@ def client(
     # Write per-test log file on teardown
     if http_client.records:
         node_id = str(request.node.nodeid)  # type: ignore[union-attr]
-        safe_name = node_id.replace("/", "__").replace("::", "__")
-        log_path = _report_dir / "logs" / f"{safe_name}.log"
+        safe_name = _safe_node_id(node_id)
+        slug = _model_slug(resolved_model.name)
+        log_path = _report_dir / slug / "logs" / f"{safe_name}.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
         lines = [
@@ -353,11 +405,19 @@ def pytest_runtest_makereport(
     if call.when != "call":
         return
 
+    rm = _model_for_item(item)
+    if rm is None:
+        return  # not a compat test, or running without config
+    collector = _collectors.get(rm.name)
+    if collector is None:
+        return
+
     outcome = "passed" if call.excinfo is None else "failed"
     duration = call.duration
 
-    safe_name = item.nodeid.replace("/", "__").replace("::", "__")
-    log_path = _report_dir / "logs" / f"{safe_name}.log"
+    safe_name = _safe_node_id(item.nodeid)
+    slug = _model_slug(rm.name)
+    log_path = _report_dir / slug / "logs" / f"{safe_name}.log"
 
     failure_message = ""
     if call.excinfo is not None:
@@ -380,9 +440,10 @@ def pytest_runtest_makereport(
     ]
     details = "\n\n".join(details_parts)
 
-    _collector.add_result(
+    collector.add_result(
         TestResult(
             node_id=item.nodeid,
+            model_name=rm.name,
             outcome=outcome,
             duration=duration,
             log_file=log_path if log_path.exists() else None,
@@ -393,11 +454,32 @@ def pytest_runtest_makereport(
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    if _collector.results:
-        summary_path = _collector.generate_summary(
-            provider=_active_provider,
-            resolved_models=_resolved_models,
+    if _active_provider is None or not _collectors:
+        return
+
+    # Per-model summary — written even if the collector has zero results,
+    # so that "configured but every test got capability-filtered out" is
+    # visible rather than silent.
+    summary_paths: list[Path] = []
+    for rm in _resolved_models:
+        collector = _collectors.get(rm.name)
+        if collector is None:
+            continue
+        summary_paths.append(
+            collector.generate_summary(
+                provider=_active_provider,
+                resolved_models=[rm],
+            )
         )
-        print(f"\n{'=' * 72}")  # noqa: T201
-        print(f"Report: {summary_path}")  # noqa: T201
-        print(f"Logs:   {_report_dir / 'logs'}")  # noqa: T201
+
+    index_path = write_index(
+        report_dir=_report_dir,
+        provider=_active_provider,
+        resolved_models=_resolved_models,
+        collectors=_collectors,
+    )
+
+    print(f"\n{'=' * 72}")  # noqa: T201
+    print(f"Index:   {index_path}")  # noqa: T201
+    for p in summary_paths:
+        print(f"Summary: {p}")  # noqa: T201

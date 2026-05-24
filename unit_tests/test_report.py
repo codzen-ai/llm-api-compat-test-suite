@@ -9,7 +9,7 @@ import pytest
 
 from config import ApiFormat, ModelConfig, ProviderConfig
 from model_profile import ModelProfile, ResolvedModel
-from report import ReportCollector, TestResult
+from report import ReportCollector, TestResult, write_index
 
 
 def _make_provider(models: list[ModelConfig]) -> ProviderConfig:
@@ -41,6 +41,7 @@ def _collector(tmp_path: Path) -> ReportCollector:
     col.add_result(
         TestResult(
             node_id="tests/openai_compat/t.py::test_x",
+            model_name="m",
             outcome="passed",
             duration=0.1,
         )
@@ -109,6 +110,7 @@ def test_report_renders_test_details(tmp_path: Path) -> None:
     col.add_result(
         TestResult(
             node_id="tests/openai_compat/test_performance.py::TestPerformance::test_streaming_latency[m]",
+            model_name="m",
             outcome="passed",
             duration=27.5,
             details="- TTFT median: 420 ms\n- TPOT median: 19.2 ms/tok",
@@ -126,10 +128,147 @@ def test_report_omits_test_details_when_no_details(tmp_path: Path) -> None:
     """No results with ``details`` → no header at all (avoid an empty section)."""
     col = ReportCollector(report_dir=tmp_path)
     col.add_result(
-        TestResult(node_id="t::x", outcome="passed", duration=0.1)
+        TestResult(
+            node_id="t::x",
+            model_name="m",
+            outcome="passed",
+            duration=0.1,
+        )
     )
     text = col.generate_summary().read_text()
     assert "## Test Details" not in text
+
+
+def _build_collectors(
+    tmp_path: Path,
+    specs: list[tuple[str, list[str]]],
+) -> tuple[list[ResolvedModel], dict[str, ReportCollector]]:
+    """specs: list of ``(model_name, [outcomes])``. Returns the resolved
+    models and a dict of populated collectors, mirroring the layout that
+    conftest produces (each collector rooted at ``tmp_path/<model>``)."""
+    resolved: list[ResolvedModel] = []
+    collectors: dict[str, ReportCollector] = {}
+    for name, outcomes in specs:
+        cfg = ModelConfig(name=name, profile=name)
+        profile = _make_profile(f"{name}-2026-04-18", ["chat", "streaming"])
+        rm = ResolvedModel(config=cfg, profile=profile, source_path=_FAKE_SOURCE)
+        resolved.append(rm)
+        col_dir = tmp_path / name
+        col_dir.mkdir()
+        col = ReportCollector(report_dir=col_dir)
+        for i, outcome in enumerate(outcomes):
+            col.add_result(
+                TestResult(
+                    node_id=f"tests/openai_compat/t.py::test_{i}",
+                    model_name=name,
+                    outcome=outcome,
+                    duration=0.1,
+                )
+            )
+        collectors[name] = col
+    return resolved, collectors
+
+
+def test_index_lists_each_configured_model_with_counts(tmp_path: Path) -> None:
+    resolved, collectors = _build_collectors(
+        tmp_path,
+        [
+            ("alpha", ["passed", "passed", "failed"]),
+            ("beta", ["passed", "skipped"]),
+        ],
+    )
+    provider = _make_provider([rm.config for rm in resolved])
+
+    path = write_index(tmp_path, provider, resolved, collectors)
+    text = path.read_text()
+
+    assert path == tmp_path / "index.md"
+    assert "## Models" in text
+    assert "| alpha |" in text
+    assert "| beta |" in text
+    # Both per-model summaries are linked relative to the run dir.
+    assert "[summary](alpha/summary.md)" in text
+    assert "[summary](beta/summary.md)" in text
+
+
+def test_index_includes_capability_count_column(tmp_path: Path) -> None:
+    """Capabilities column tells readers the test sets are not directly
+    comparable — keep it present and populated from the resolved model."""
+    resolved, collectors = _build_collectors(tmp_path, [("alpha", ["passed"])])
+    provider = _make_provider([rm.config for rm in resolved])
+
+    text = write_index(tmp_path, provider, resolved, collectors).read_text()
+
+    assert "Capabilities" in text
+    # The profile created by _build_collectors declares 2 capabilities.
+    assert "| 2 |" in text
+
+
+def test_index_omits_pass_rate_column(tmp_path: Path) -> None:
+    """Cross-model pass-rate comparison is misleading when models have
+    different capability sets; the index deliberately doesn't render it."""
+    resolved, collectors = _build_collectors(
+        tmp_path,
+        [("alpha", ["passed", "failed"])],
+    )
+    provider = _make_provider([rm.config for rm in resolved])
+
+    text = write_index(tmp_path, provider, resolved, collectors).read_text()
+
+    lowered = text.lower()
+    assert "pass rate" not in lowered
+    assert "%" not in text
+
+
+def test_index_shows_configured_model_with_no_results(tmp_path: Path) -> None:
+    """A model whose tests were all filtered out by capability matching
+    still appears in the index — silent disappearance would hide config
+    mistakes."""
+    resolved, collectors = _build_collectors(
+        tmp_path,
+        [("alpha", []), ("beta", ["passed"])],
+    )
+    provider = _make_provider([rm.config for rm in resolved])
+
+    text = write_index(tmp_path, provider, resolved, collectors).read_text()
+
+    # alpha row exists with zero counts; the row still has 8 cells.
+    alpha_rows = [line for line in text.splitlines() if line.startswith("| alpha |")]
+    assert len(alpha_rows) == 1
+    assert "| 0 | 0 | 0 | 0 |" in alpha_rows[0]
+
+
+def test_index_preserves_configured_model_order(tmp_path: Path) -> None:
+    """Models should appear in YAML/config order so the "primary" model
+    sits at the top, not in alphabetical order."""
+    resolved, collectors = _build_collectors(
+        tmp_path,
+        [("zeta", ["passed"]), ("alpha", ["passed"])],
+    )
+    provider = _make_provider([rm.config for rm in resolved])
+
+    text = write_index(tmp_path, provider, resolved, collectors).read_text()
+
+    zeta_idx = text.find("| zeta |")
+    alpha_idx = text.find("| alpha |")
+    assert zeta_idx != -1 and alpha_idx != -1
+    assert zeta_idx < alpha_idx
+
+
+def test_collector_writes_summary_even_with_no_results(tmp_path: Path) -> None:
+    """Empty collector still produces a ``summary.md`` so that
+    "configured but ran nothing" is auditable from the file tree alone."""
+    cfg = ModelConfig(name="m", profile="m")
+    provider = _make_provider([cfg])
+    profile = _make_profile("m-2026-04-18", ["chat"])
+    resolved = [ResolvedModel(config=cfg, profile=profile, source_path=_FAKE_SOURCE)]
+    col = ReportCollector(report_dir=tmp_path)
+
+    path = col.generate_summary(provider, resolved_models=resolved)
+
+    assert path.exists()
+    text = path.read_text()
+    assert "# LLM API Compatibility Test Report" in text
 
 
 @pytest.mark.parametrize("count", [2, 3])
