@@ -2,7 +2,7 @@
 
 ## 背景与问题
 
-[config.yaml](../config.yaml) 单 provider 下已经允许声明多个 model；[conftest.py](../conftest.py) 的 `pytest_generate_tests` 也确实会对每个 model 参数化测试。但**测试结果的产物完全没有按 model 分层**——多 model 跑下来的目录长这样：
+[config.yaml](/config.yaml) 单 provider 下已经允许声明多个 model；[conftest.py](/conftest.py) 的 `pytest_generate_tests` 也确实会对每个 model 参数化测试。但**测试结果的产物完全没有按 model 分层**——多 model 跑下来的目录长这样：
 
 ```
 reports/20260523_142817/
@@ -16,7 +16,7 @@ reports/20260523_142817/
 
 model 名只通过参数化 id 的 `[glm-5.1]` / `[glm-4.5]` 后缀体现在文件名里，没有 `logs/glm-5.1/`、`logs/glm-4.5/` 这种分层。
 
-更严重的问题在 `summary.md`：[report.py:130-134](../src/report.py#L130-L134) 按 `node_id.split("/")[1]`（即 `openai_compat`/`anthropic_compat`/`gemini_compat`）分组，**不按 model 分组**——两个 model 的结果搅在同一张表里，只能靠 `[xxx]` 后缀区分。
+更严重的问题在 `summary.md`：[report.py:130-134](/src/report.py#L130-L134) 按 `node_id.split("/")[1]`（即 `openai_compat`/`anthropic_compat`/`gemini_compat`）分组，**不按 model 分组**——两个 model 的结果搅在同一张表里，只能靠 `[xxx]` 后缀区分。
 
 如果只是排序问题倒还好处理，但还有一个更本质的问题：**不同 model 的 capability 集合通常不同**。一个 model 支持 streaming + tools + vision，另一个只支持 streaming——`pytest_collection` 阶段对每个 model 各自过滤 capability，两个 model 实际跑的 test 集合就是两个不同的子集。这时候把它们放在同一份 summary 里：
 
@@ -48,7 +48,7 @@ reports/20260523_142817/
 - 每个 model 的 summary 只展示该 model 的真实测试集合——pass/fail/skip 都基于自己的分母，不会被另一个 model 的 capability 集合污染
 - "model A 没跑的 test"自然消失在 A 的报告里，不需要在表里塞"missing"或"N/A"占位
 - model 间没有任何报告耦合——单独打开 `glm-5.1/summary.md` 就能完整理解该 model 的结果，不需要知道这次 run 还跑了哪些其它 model
-- 与 [multi-provider-support.md](multi-provider-support.md) 的"每 provider 一份 summary"思路一致——形成 `{provider}/{model}/summary.md` 的统一两级分层
+- 与 [multi-provider-support.md](/docs/design/multi-provider-support.md) 的"每 provider 一份 summary"思路一致——形成 `{provider}/{model}/summary.md` 的统一两级分层
 
 ### 2. 顶层 `index.md` 是跳板，不是 dashboard
 
@@ -73,7 +73,7 @@ Provider: mgtv (https://aigc-llm.mgtv.com, openai)
 
 ### 3. 每个 model 的 `summary.md` 结构与当前一致
 
-单 model summary 的内容**不需要新增 Model 列**——文件路径已经体现了 model 维度。结构沿用当前 [src/report.py](../src/report.py) 的 `generate_summary` 输出：
+单 model summary 的内容**不需要新增 Model 列**——文件路径已经体现了 model 维度。结构沿用当前 [src/report.py](/src/report.py) 的 `generate_summary` 输出：
 
 - Configuration 表（base_url / api_format / auth_type / verify_ssl）
 - Models 表（**只剩这一行**——其实可以省略，但保留有助于读者快速看到该 model 用的是哪个 profile snapshot）
@@ -90,9 +90,9 @@ Provider: mgtv (https://aigc-llm.mgtv.com, openai)
 
 ### 5. `TestResult` 加 `model_name`；多个 `ReportCollector` 实例
 
-[src/report.py:60-73](../src/report.py#L60-L73) 的 `TestResult` 加 `model_name: str`，方便 collector 反查（虽然每个 collector 只装一个 model 的数据，但留这个字段使 collector 不需要在"加入 result"时先校验 model 是不是匹配）。
+[src/report.py:60-73](/src/report.py#L60-L73) 的 `TestResult` 加 `model_name: str`，方便 collector 反查（虽然每个 collector 只装一个 model 的数据，但留这个字段使 collector 不需要在"加入 result"时先校验 model 是不是匹配）。
 
-[conftest.py](../conftest.py) 的 `_collector` 全局单实例 → `_collectors: dict[str, ReportCollector]`（key = model name）。`pytest_configure` 时按配置中的 model 顺序预创建空 collector 与子目录；`pytest_runtest_makereport` 从 `item.callspec.params["resolved_model"]` 取 model name 路由到对应 collector；`pytest_sessionfinish` 遍历 collectors 各自调 `generate_summary` 写入自己的目录，再生成顶层 `index.md`。
+[conftest.py](/conftest.py) 的 `_collector` 全局单实例 → `_collectors: dict[str, ReportCollector]`（key = model name）。`pytest_configure` 时按配置中的 model 顺序预创建空 collector 与子目录；`pytest_runtest_makereport` 从 `item.callspec.params["resolved_model"]` 取 model name 路由到对应 collector；`pytest_sessionfinish` 遍历 collectors 各自调 `generate_summary` 写入自己的目录，再生成顶层 `index.md`。
 
 ### 6. 配置中存在但未跑出任何 result 的 model 也要在 index 出现
 
@@ -102,7 +102,7 @@ Provider: mgtv (https://aigc-llm.mgtv.com, openai)
 
 ### 7. 与 multi-provider 设计的组合
 
-[multi-provider-support.md](multi-provider-support.md) 的产物形如 `reports/{ts}/{provider}/{summary.md + logs/}`。本设计落地后 + multi-provider 落地后的组合产物是：
+[multi-provider-support.md](/docs/design/multi-provider-support.md) 的产物形如 `reports/{ts}/{provider}/{summary.md + logs/}`。本设计落地后 + multi-provider 落地后的组合产物是：
 
 ```
 reports/{ts}/
@@ -134,10 +134,10 @@ reports/{ts}/
 
 | 文件 | 改动性质 |
 |------|----------|
-| [conftest.py](../conftest.py) | 单 `_collector` → 多 collector（按 model 路由）；log 路径加 `{model}/` 段；`pytest_runtest_makereport` 把 model 写入 `TestResult`；`pytest_sessionfinish` 写每 model summary + 顶层 index.md |
-| [src/report.py](../src/report.py) | `TestResult` 加 `model_name`；新增 `IndexCollector`（或函数）生成顶层 index.md；`generate_summary` 接口基本不动 |
-| [unit_tests/test_report.py](../unit_tests/test_report.py) | 现有断言基于"一个 collector 一份 summary"，多 model 时为多个独立 collector，原断言对单 model 用例继续生效；新增多 model 渲染与 index.md 内容的断言 |
-| [CLAUDE.md](../CLAUDE.md) | "Data flow" 段落更新 reports 目录示意；新增 "Multi-model" 小节 |
+| [conftest.py](/conftest.py) | 单 `_collector` → 多 collector（按 model 路由）；log 路径加 `{model}/` 段；`pytest_runtest_makereport` 把 model 写入 `TestResult`；`pytest_sessionfinish` 写每 model summary + 顶层 index.md |
+| [src/report.py](/src/report.py) | `TestResult` 加 `model_name`；新增 `IndexCollector`（或函数）生成顶层 index.md；`generate_summary` 接口基本不动 |
+| [unit_tests/test_report.py](/unit_tests/test_report.py) | 现有断言基于"一个 collector 一份 summary"，多 model 时为多个独立 collector，原断言对单 model 用例继续生效；新增多 model 渲染与 index.md 内容的断言 |
+| [CLAUDE.md](/CLAUDE.md) | "Data flow" 段落更新 reports 目录示意；新增 "Multi-model" 小节 |
 
 ## 实施步骤（TODO + Checkpoint）
 
@@ -147,8 +147,8 @@ reports/{ts}/
 
 **产出：**
 
-- [src/report.py](../src/report.py) 的 `TestResult` 加 `model_name: str` 字段
-- [unit_tests/test_report.py](../unit_tests/test_report.py) 现有用例补 `model_name=` 参数（pre-release，无 back-compat 包袱，直接改）
+- [src/report.py](/src/report.py) 的 `TestResult` 加 `model_name: str` 字段
+- [unit_tests/test_report.py](/unit_tests/test_report.py) 现有用例补 `model_name=` 参数（pre-release，无 back-compat 包袱，直接改）
 
 **✋ Checkpoint 1**：`uv run pytest unit_tests/test_report.py -v` 全绿；`uv run pyright` 无新增告警。
 
@@ -175,7 +175,7 @@ reports/{ts}/
 
 **产出：**
 
-- [conftest.py:322-344](../conftest.py#L322-L344) 的 log 写盘路径改为 `_report_dir / model_name / "logs" / safe_name + ".log"`
+- [conftest.py:322-344](/conftest.py#L322-L344) 的 log 写盘路径改为 `_report_dir / model_name / "logs" / safe_name + ".log"`
 - `safe_name` 去掉末尾 `[model-name]` 段——既然路径已经分目录，文件名里不需要再带 model（参数化 id 末段去除可以用 `re.sub(r"\[[^\]]+\]$", "", safe_name)`）
 - log 内部 header 的 `Model:` 字段保留——脚本不依赖路径解析也能拿到 model
 
@@ -187,7 +187,7 @@ reports/{ts}/
 
 **产出：**
 
-- [conftest.py:350-392](../conftest.py#L350-L392) 不再写入全局 `_collector`，而是先用 `_collector_for(item)` 找到对应 collector
+- [conftest.py:350-392](/conftest.py#L350-L392) 不再写入全局 `_collector`，而是先用 `_collector_for(item)` 找到对应 collector
 - 取出 `resolved_model.name` 写入 `TestResult.model_name`
 
 **✋ Checkpoint 4**：双 model run 后，两个 collector 各自只包含自己 model 的 result。可以加一个 assertion log（debug 期间）验证。
@@ -215,7 +215,7 @@ reports/{ts}/
 
 **产出：**
 
-- [unit_tests/test_report.py](../unit_tests/test_report.py) 加：
+- [unit_tests/test_report.py](/unit_tests/test_report.py) 加：
   - 多 collector 多 summary 的写入断言（用 tmp_path）
   - `_write_index` 的内容断言（不含 pass rate 字样、Capabilities 列存在）
   - 空 collector（model 配了但无 result）也写出 summary
@@ -229,7 +229,7 @@ reports/{ts}/
 
 **产出：**
 
-- [CLAUDE.md](../CLAUDE.md) 的 "Data flow" 段落更新 reports 目录示意（多 model 形态）
+- [CLAUDE.md](/CLAUDE.md) 的 "Data flow" 段落更新 reports 目录示意（多 model 形态）
 - 新增 "Multi-model reports" 小节，简述"每 model 一份 summary、capability 集合不同所以不做横比"，链接本文件
 
 **✋ Checkpoint 7**：让一个不熟悉的人读 CLAUDE.md + 跑一次双 model run 后能理解为什么 index.md 没有 pass rate 列。

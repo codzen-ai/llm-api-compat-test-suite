@@ -4,7 +4,7 @@ Hand-authored ground-truth records of what each OpenAI-family model snapshot
 actually supports. These YAML files drive capability filtering: a third-party
 model configured with `profile: gpt-5.4-mini` runs exactly the test subset
 that OpenAI's `gpt-5.4-mini` passes. See
-[docs/profile-based-compatibility-testing.md](../docs/profile-based-compatibility-testing.md)
+[docs/design/profile-based-compatibility-testing.md](/docs/design/profile-based-compatibility-testing.md)
 for the full design.
 
 ## Adding a new profile

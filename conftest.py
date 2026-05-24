@@ -150,7 +150,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "Recording mode: run every capability-marked test regardless of "
             "profile, so you can observe what a model really supports before "
             "authoring its profile YAML. See "
-            "docs/profile-based-compatibility-testing.md."
+            "docs/design/profile-based-compatibility-testing.md."
         ),
     )
 

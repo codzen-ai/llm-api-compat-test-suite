@@ -99,7 +99,7 @@ model_profiles/
 
 由于 snapshot 省略时由框架自动推导"最新"，**报告必须显式记录每次跑实际加载的是哪个 profile 文件**，否则结果不可追溯（"两次跑同一 config，对比基准悄悄变了"）。
 
-[reports/{ts}/summary.md](../reports/) 的 Configuration 表至少要新增以下行：
+[reports/{ts}/summary.md](/reports/) 的 Configuration 表至少要新增以下行：
 
 | Key | Value |
 |-----|-------|
@@ -199,7 +199,7 @@ PR1 对 `test_logprobs` 采用了**方式 C**。未来若出现"必须分别验�
 
 ## 前置：PR1 修复现有测试问题（✅ 已完成）
 
-本方案的实施依赖 [PR1：修复当前测试失败](fix-current-test-failures.md) 先完成。PR1 已合入（commit `919b8ba`），做了三件事：
+本方案的实施依赖 [PR1：修复当前测试失败](/docs/design/fix-current-test-failures.md) 先完成。PR1 已合入（commit `919b8ba`），做了三件事：
 
 1. 修复 fixture 错误（1×1 PNG → 64×64 合法 PNG）
 2. 解决 `test_logprobs` 与 vision 测试的交叉依赖（`max_tokens` → `max_completion_tokens`）
@@ -235,7 +235,7 @@ PR1 完成后，OpenAI 官方 `gpt-5.4-mini` 在现有用户声明 capability �
 - 加载 config 后，对每个 model 调用 `ProfileRegistry.load`；加载失败时 fallback 到用户声明的 `capabilities`（打印警告）
 - 新建 `ResolvedModel = (config, profile | None)` 容器
 
-**为什么保留过渡期**：让现有 [config.yaml](../config.yaml) 在 profile 文件尚未建立时仍能跑，避免一次性 break 所有使用者。
+**为什么保留过渡期**：让现有 [config.yaml](/config.yaml) 在 profile 文件尚未建立时仍能跑，避免一次性 break 所有使用者。
 
 **✋ Checkpoint 2**：跑 `uv run pytest --config -v`，确认 PR1 的配置仍能正常运行。
 
@@ -247,7 +247,7 @@ PR1 完成后，OpenAI 官方 `gpt-5.4-mini` 在现有用户声明 capability �
 - 修改 `conftest.py` 的 `_should_skip_for_capability`：优先从 `model.profile.capabilities` 读；profile 不存在时 fallback 到 `model.capabilities`
 - `model_config` / `model` fixture 传递 `ResolvedModel`
 
-**✋ Checkpoint 3**：把样板 profile 填入一个完整的 `gpt-5.4-mini.yaml`，把 [config.yaml](../config.yaml) 改成 `profile: gpt-5.4-mini`（去掉 capabilities 字段），跑测试确认结果与 PR1 等价。
+**✋ Checkpoint 3**：把样板 profile 填入一个完整的 `gpt-5.4-mini.yaml`，把 [config.yaml](/config.yaml) 改成 `profile: gpt-5.4-mini`（去掉 capabilities 字段），跑测试确认结果与 PR1 等价。
 
 ---
 
@@ -278,7 +278,7 @@ PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"
 ### TODO 6：测试报告标注所用 profile（✅ 已完成）
 
 **产出：**
-- `src/report.py` 生成的 [summary.md](../reports/) Configuration 段加字段：Profile 文件路径、snapshot、created_at、resolution（auto-latest / pinned）
+- `src/report.py` 生成的 [summary.md](/reports/) Configuration 段加字段：Profile 文件路径、snapshot、created_at、resolution（auto-latest / pinned）
 - 多 model 时每个 model 独立列出
 
 **✋ Checkpoint 6**：跑一次测试看报告，确认"从报告可以反推出这次对比基准"。
@@ -289,7 +289,7 @@ PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"
 
 **产出：**
 - CLI 新增 `--profile <name>` / `--profile-snapshot <date>`；`--profile` 必填
-- 取消 [src/config.py](../src/config.py) 的 `from_cli` 中硬编码 capability 列表
+- 取消 [src/config.py](/src/config.py) 的 `from_cli` 中硬编码 capability 列表
 - **删除** `ModelConfig.capabilities` 字段和 TODO 2/3 的 fallback 逻辑
 - profile 缺失时直接 `pytest.UsageError`，列出可用 profile
 
@@ -300,8 +300,8 @@ PR1 只标了 3 个与 gpt-5.4-mini 失败相关的 marker。本步骤扩展到"
 ### TODO 8：文档与示例更新（✅ 已完成）
 
 **产出：**
-- 更新 [config.yaml](../config.yaml) 示例，用新的 profile 语法
-- 更新 [CLAUDE.md](../CLAUDE.md) "Adding a new test" 段落：说明测试必须标具体 capability、profile 由人工维护、不走自动录制
+- 更新 [config.yaml](/config.yaml) 示例，用新的 profile 语法
+- 更新 [CLAUDE.md](/CLAUDE.md) "Adding a new test" 段落：说明测试必须标具体 capability、profile 由人工维护、不走自动录制
 - 在 README / CLAUDE.md 添加"建立新 profile"的流程说明（引用本方案）
 
 **✋ Checkpoint 8**：冷启动测试——新人从 README 入手能否顺利跑通一次对比。
