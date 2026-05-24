@@ -30,6 +30,7 @@ capabilities:
   - json_mode
   - json_schema
   - performance
+  - thinking
   # Deliberately omitted:
   #   - max_tokens        — gpt-5.x requires max_completion_tokens
   #   - stop_sequences    — server rejects `stop`
