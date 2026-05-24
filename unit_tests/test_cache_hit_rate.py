@@ -18,17 +18,19 @@ from unittest.mock import MagicMock, patch
 import cache_hit_rate as chr_module
 import httpx
 import pytest
-from cache_hit_rate import (
+from _common import (
     CHARS_PER_TOKEN,
-    RunState,
     Sampler,
+    fmt_duration,
+    make_text_for_tokens,
+    select_target,
+)
+from cache_hit_rate import (
+    RunState,
     _extract_assistant_content,
     _extract_usage,
-    _fmt_duration,
     is_overflow,
-    make_text_for_tokens,
     run_test,
-    select_target,
 )
 from rich.console import Console
 
@@ -148,7 +150,7 @@ class TestFmtDuration:
         (0.0, "0s"),
     ])
     def test_format(self, seconds: float, expected: str) -> None:
-        assert _fmt_duration(seconds) == expected
+        assert fmt_duration(seconds) == expected
 
 
 class TestSelectTarget:

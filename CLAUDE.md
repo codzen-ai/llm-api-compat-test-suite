@@ -15,9 +15,11 @@ uv run pytest tests/openai_compat/test_chat_basic.py::TestChatBasic::test_simple
 uv run pytest --collect-only --config  # Preview which tests will run
 uv run pytest --config --ignore-profile -v   # Recording mode: bypass capability filtering to author a new profile
 uv run python scripts/cache_hit_rate.py --config config.yaml   # Standalone prompt-cache hit-rate stress test (long-running, ~30-60min)
+uv run python scripts/capacity_probe.py probe --config config.yaml --max-context 32000   # Probe account RPM/TPM ceilings (~2-10min)
+uv run python scripts/capacity_probe.py capacity --config config.yaml --avg-input-tokens 1000 --avg-output-tokens 200   # Sustained throughput under business request profile (~5-30min)
 ```
 
-The `cache_hit_rate.py` script is intentionally outside pytest — see [docs/usage/cache-hit-rate.md](/docs/usage/cache-hit-rate.md) for how to run it and [docs/design/prompt-cache-hit-rate-script.md](/docs/design/prompt-cache-hit-rate-script.md) for the design rationale.
+The `cache_hit_rate.py` and `capacity_probe.py` scripts are intentionally outside pytest — both share [scripts/_common.py](/scripts/_common.py) (config loading, `Sampler`, lorem text generator, slugify/git_commit). See [docs/usage/cache-hit-rate.md](/docs/usage/cache-hit-rate.md) + [docs/usage/capacity-probe.md](/docs/usage/capacity-probe.md) for usage and [docs/design/prompt-cache-hit-rate-script.md](/docs/design/prompt-cache-hit-rate-script.md) + [docs/design/capacity-probe-script.md](/docs/design/capacity-probe-script.md) for design rationale.
 
 ## Architecture
 
