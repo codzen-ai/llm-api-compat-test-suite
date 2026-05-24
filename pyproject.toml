@@ -71,5 +71,5 @@ markers = [
     # Names must match entries in model_profiles/.../*.yaml capabilities lists.
     # New markers are introduced alongside the test that depends on them;
     # see docs/profile-based-compatibility-testing.md for the vetting rules.
-    "capability(name): test requires specific model capability (chat, streaming, tools, vision, embeddings, max_tokens, max_completion_tokens, stop_sequences, n_multi, logprobs, seed, json_mode, json_schema, system_message, temperature, top_p, frequency_penalty, presence_penalty, performance)",
+    "capability(name): test requires specific model capability (chat, streaming, tools, vision, embeddings, max_tokens, max_completion_tokens, stop_sequences, n_multi, logprobs, seed, json_mode, json_schema, system_message, temperature, top_p, frequency_penalty, presence_penalty, performance, thinking)",
 ]
