@@ -115,6 +115,22 @@ def parse_args() -> argparse.Namespace:
                               "Stage 2 builds prompts up to this size. "
                               "Required — passed explicitly rather than "
                               "read from a possibly-stale profile.")
+    p_probe.add_argument("--stage1-workers", type=int,
+                         default=STAGE_1_WORKERS_DEFAULT,
+                         help=f"Stage 1 (RPM probe) concurrent workers "
+                              f"(default: {STAGE_1_WORKERS_DEFAULT}). Raise "
+                              f"for accounts with very high RPM ceilings.")
+    p_probe.add_argument("--stage2-workers", type=int,
+                         default=STAGE_2_WORKERS_DEFAULT,
+                         help=f"Stage 2 (TPM probe) concurrent workers "
+                              f"(default: {STAGE_2_WORKERS_DEFAULT}). "
+                              f"Sized for ~10M TPM @ ~30K tokens/req; raise "
+                              f"if reports show 'bounded_by_rpm' or no 429s.")
+    p_probe.add_argument("--saturation-rpm", type=float,
+                         default=SATURATION_RPM_DEFAULT,
+                         help=f"Dispatcher RPM cap; queue back-pressure does "
+                              f"the real throttling "
+                              f"(default: {SATURATION_RPM_DEFAULT:.0f}).")
 
     p_capacity = subs.add_parser(
         "capacity",
@@ -137,9 +153,15 @@ def parse_args() -> argparse.Namespace:
     p_capacity.add_argument("--max-output-tokens", type=int, default=None,
                             help="Sampler upper clamp on output "
                                  "(default: 2 * --avg-output-tokens)")
-    p_capacity.add_argument("--start-rpm", type=int, default=10,
+    p_capacity.add_argument("--start-rpm", type=int, default=100,
                             help="Initial target RPM if no probe data exists "
-                                 "(default: 10)")
+                                 "(default: 100). Raise for high-TPM "
+                                 "accounts so the 1.5x ramp reaches steady "
+                                 "state within --max-duration-minutes.")
+    p_capacity.add_argument("--workers", type=int, default=None,
+                            help="Override per-minute worker count "
+                                 "(default: auto-sized from target RPM, "
+                                 "see _auto_workers_for_rpm).")
     p_capacity.add_argument("--steady-state-minutes", type=int, default=3,
                             help="Consecutive minutes of stable 429-rate "
                                  "required to declare convergence (default: 3)")
@@ -540,16 +562,25 @@ async def run_load(  # noqa: C901, PLR0913
 # ── Probe-mode helpers (see design §3) ───────────────────────────────────────
 
 
-SATURATION_RPM = 600.0
-"""Target RPM used during probe stages. Set well above any realistic
-provider limit so the actual achieved rate equals what the server allows
-— Retry-After back-off in ``run_load`` handles the bursts."""
+SATURATION_RPM_DEFAULT = 60000.0
+"""Default dispatch RPM cap for probe stages. Set well above any realistic
+provider limit so queue back-pressure (sized ``n_workers*2``) — not the
+dispatcher interval — gates the actual rate. ``Retry-After`` back-off in
+``run_load`` handles 429 bursts. Override with ``--saturation-rpm`` if
+the dispatcher itself becomes a bottleneck."""
 
-STAGE_1_WORKERS = 30
-STAGE_2_WORKERS = 10
-"""Worker counts. Stage 1 (small requests, ~1s latency) needs more
-parallelism to saturate RPM; Stage 2 (big requests, slower) needs fewer
-since each request consumes more token budget per unit time."""
+STAGE_1_WORKERS_DEFAULT = 200
+"""Default Stage 1 worker count. Stage 1 sends small (~1s p50) requests to
+find the RPM ceiling; each worker sustains ~60 RPM, so 200 covers RPM
+limits up to ~12k. For accounts with higher RPM ceilings, raise via
+``--stage1-workers`` (mind OS file-handle limits — n_workers*2 sockets)."""
+
+STAGE_2_WORKERS_DEFAULT = 200
+"""Default Stage 2 worker count. Stage 2 sends large requests
+(~95 % of ``--max-context``); to test a TPM ceiling of ~10M with
+30K-token requests at p50≈30s, we need ~167 in-flight requests, so 200
+gives modest headroom. For very large contexts (≥128K) or higher TPM
+ceilings, raise via ``--stage2-workers``."""
 
 PROBE_RAMP_LATENCY_SLACK_SEC = 30.0
 """When budget is split across stages, reserve this much for the initial
@@ -614,16 +645,28 @@ def _compute_throughput(
     records: list[RequestRecord],
     elapsed_sec: float,
 ) -> tuple[float, float]:
-    """Return (RPM, TPM) from successful records over ``elapsed_sec``.
+    """Return (RPM, TPM) from successful records.
 
-    Uses elapsed_sec rather than (max ts - min ts) so the rate is anchored
-    to wall-clock; a stage that ended early (SIGINT) still gets a true
-    per-minute number."""
+    Anchors the rate to the *OK-request window* (first dispatch ts → last
+    response finish ts) when there are ≥2 OK records, so ramp-up (queue
+    filling) and ramp-down (in-flight requests after the dispatcher
+    stops) don't dilute the average. Falls back to ``elapsed_sec`` when
+    the OK window can't be derived (single record, or ts collapsed)."""
     ok = [r for r in records if r.classification == "ok"]
-    if elapsed_sec <= 0:
+    if not ok:
         return (0.0, 0.0)
-    rpm = len(ok) * 60.0 / elapsed_sec
-    tpm = sum(r.input_tokens + r.output_tokens for r in ok) * 60.0 / elapsed_sec
+    if len(ok) >= 2:
+        first_start = min(r.ts for r in ok)
+        last_finish = max(r.ts + r.elapsed_ms / 1000.0 for r in ok)
+        window = last_finish - first_start
+        if window <= 0:
+            window = elapsed_sec
+    else:
+        window = elapsed_sec
+    if window <= 0:
+        return (0.0, 0.0)
+    rpm = len(ok) * 60.0 / window
+    tpm = sum(r.input_tokens + r.output_tokens for r in ok) * 60.0 / window
     return (rpm, tpm)
 
 
@@ -708,18 +751,19 @@ async def _run_stage(
     n_workers: int,
     timeout_sec: float,
     state: _LoadState,
+    saturation_rpm: float,
 ) -> StageResult:
     """Execute one saturation-rate stage and compute its measured rates."""
     CONSOLE.print(
         f"[bold]{stage_name}[/bold] running for "
         f"{duration_sec:.0f}s at saturation rate "
-        f"(target {SATURATION_RPM:.0f} RPM, {n_workers} workers)…"
+        f"(target {saturation_rpm:.0f} RPM, {n_workers} workers)…"
     )
     t0 = time.monotonic()
     records = await run_load(
         url=url, headers=headers, model=model,
         spec_fn=spec_fn,
-        target_rpm=SATURATION_RPM,
+        target_rpm=saturation_rpm,
         duration_sec=duration_sec,
         n_workers=n_workers,
         timeout_sec=timeout_sec,
@@ -788,9 +832,10 @@ async def _probe_orchestrate(  # noqa: PLR0912, C901
             url=url, headers=headers, model=model,
             spec_fn=_make_small_spec,
             duration_sec=per_stage_sec,
-            n_workers=STAGE_1_WORKERS,
+            n_workers=args.stage1_workers,
             timeout_sec=args.request_timeout_sec,
             state=state,
+            saturation_rpm=args.saturation_rpm,
         )
         stages.append(s1)
         if s1.measured_rpm > 0:
@@ -805,9 +850,10 @@ async def _probe_orchestrate(  # noqa: PLR0912, C901
             url=url, headers=headers, model=model,
             spec_fn=big_spec_fn,
             duration_sec=per_stage_sec,
-            n_workers=STAGE_2_WORKERS,
+            n_workers=args.stage2_workers,
             timeout_sec=args.request_timeout_sec,
             state=state,
+            saturation_rpm=args.saturation_rpm,
         )
         stages.append(s2)
         # If we saw TPM-triggered 429s, the measured TPM is the real ceiling.
@@ -879,8 +925,14 @@ def _write_probe_summary_md(
 
     rpm_str = (f"**{outcome.rpm_limit:.0f}**" if outcome.rpm_limit
                else "_unknown_")
-    tpm_str = (f"**{outcome.tpm_limit:,.0f}**" if outcome.tpm_limit
-               else "_unknown_")
+    if outcome.tpm_limit is None:
+        tpm_str = "_unknown_"
+    elif outcome.tpm_source == "bounded_by_rpm":
+        # Marker that this is a *lower bound*, not the real ceiling — see
+        # caveat below explaining why.
+        tpm_str = f"**≥ {outcome.tpm_limit:,.0f}**"
+    else:
+        tpm_str = f"**{outcome.tpm_limit:,.0f}**"
 
     # Caveat banner — most common pitfall on a probe is "I never hit 429"
     caveats: list[str] = []
@@ -910,6 +962,11 @@ def _write_probe_summary_md(
         f"- Git commit: `{_git_commit()}`",
         f"- Started: `{started_iso}` · Ended: `{ended_iso}` "
         f"· Wall-clock: `{_fmt_duration(duration_sec)}`",
+        f"- Probe config: "
+        f"`--max-context={args.max_context}` · "
+        f"`--stage1-workers={args.stage1_workers}` · "
+        f"`--stage2-workers={args.stage2_workers}` · "
+        f"`--saturation-rpm={args.saturation_rpm:.0f}`",
         "",
         "## Headline",
         "",
@@ -1165,8 +1222,12 @@ def _classify_bottleneck(records: list[RequestRecord]) -> str:
 
 
 def _auto_workers_for_rpm(target_rpm: float) -> int:
-    """Crude sizing: assume ~10s p50 latency; each worker can sustain 6 RPM."""
-    return max(int(target_rpm / 6) + 1, 5)
+    """Crude sizing: assume ~5s p50 latency; each worker can sustain 12 RPM.
+    Floor of 10 keeps small-RPM minutes from being concurrency-starved
+    (queue back-pressure handles the upper bound). For high-TPM accounts
+    this scales smoothly into the hundreds; pass ``--workers`` to pin a
+    fixed count if the auto sizing is off for your latency profile."""
+    return max(int(target_rpm / 12) + 1, 10)
 
 
 def _make_decision(rate_429: float) -> str:
@@ -1256,7 +1317,7 @@ async def _capacity_orchestrate(  # noqa: PLR0913
     required_steady = args.steady_state_minutes
 
     while minute_idx < budget_minutes and not state.stop_requested:
-        n_workers = _auto_workers_for_rpm(target_rpm)
+        n_workers = args.workers or _auto_workers_for_rpm(target_rpm)
         sample = await _run_capacity_minute(
             minute_idx=minute_idx,
             target_rpm=target_rpm,
@@ -1430,6 +1491,9 @@ def _write_capacity_summary_md(  # noqa: PLR0913
         f"- `--max-output-tokens`: "
         f"{args.max_output_tokens or args.avg_output_tokens * 2}",
         f"- `--seed`: {args.seed} (length-sampling reproducibility)",
+        f"- `--start-rpm`: {args.start_rpm} · "
+        f"`--workers`: "
+        f"{f'{args.workers} (pinned)' if args.workers else 'auto (target_rpm/12)'}",
         "",
         "## Minute-by-minute trace",
         "",

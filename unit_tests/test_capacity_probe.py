@@ -431,22 +431,38 @@ def _rec(
 
 class TestComputeThroughput:
     def test_only_ok_counted(self) -> None:
-        records = [_rec("ok", pt=10, ct=5), _rec("ok", pt=20, ct=10),
-                   _rec("429_rpm")]
+        # Spread ts across 60s so the OK-window equals one minute exactly:
+        # last_finish (59.9 + 0.1) − first_start (0.0) = 60.0
+        records = [_rec("ok", pt=10, ct=5, ts=0.0),
+                   _rec("ok", pt=20, ct=10, ts=59.9),
+                   _rec("429_rpm", ts=30.0)]
         rpm, tpm = _compute_throughput(records, elapsed_sec=60.0)
         # 2 ok in 60s → 2 RPM; tokens = (10+5)+(20+10) = 45 → 45 TPM
         assert rpm == 2.0
         assert tpm == 45.0
 
     def test_zero_elapsed_returns_zero(self) -> None:
+        # Single OK record + zero elapsed → no window is derivable
         assert _compute_throughput([_rec("ok")], elapsed_sec=0.0) == (0.0, 0.0)
 
     def test_empty_returns_zero(self) -> None:
         assert _compute_throughput([], elapsed_sec=60.0) == (0.0, 0.0)
 
     def test_partial_minute_scales_up(self) -> None:
-        records = [_rec("ok", pt=100, ct=50) for _ in range(5)]
-        # 5 ok in 30s → 10 RPM, 5 * 150 / 0.5 min = 1500 TPM
+        # 5 OK records spanning 30s — window is derived from ts, not elapsed
+        records = [_rec("ok", pt=100, ct=50, ts=t)
+                   for t in (0.0, 7.5, 15.0, 22.5, 29.9)]
+        rpm, tpm = _compute_throughput(records, elapsed_sec=30.0)
+        assert rpm == 10.0
+        assert tpm == 1500.0
+
+    def test_collapsed_ts_falls_back_to_elapsed(self) -> None:
+        # All ts identical (synthetic / clock skew) → derivation collapses,
+        # fall back to elapsed_sec so the result is still meaningful.
+        records = [_rec("ok", pt=100, ct=50, ts=0.0) for _ in range(5)]
+        # Force elapsed_ms to 0 so the derived window is also 0
+        for r in records:
+            r.elapsed_ms = 0.0
         rpm, tpm = _compute_throughput(records, elapsed_sec=30.0)
         assert rpm == 10.0
         assert tpm == 1500.0
@@ -648,14 +664,15 @@ class TestMakeDecision:
 
 class TestAutoWorkers:
     def test_minimum_floor(self) -> None:
-        # Very low RPM still gets 5 workers minimum
-        assert _auto_workers_for_rpm(1.0) == 5
-        assert _auto_workers_for_rpm(10.0) == 5
+        # Very low RPM still gets 10 workers minimum
+        assert _auto_workers_for_rpm(1.0) == 10
+        assert _auto_workers_for_rpm(60.0) == 10  # 60/12+1=6, floored to 10
 
     def test_scales_with_rpm(self) -> None:
-        # 60 RPM / 6 = 10, +1 = 11 (but floor is 5, so just 11)
-        assert _auto_workers_for_rpm(60.0) == 11
-        assert _auto_workers_for_rpm(300.0) == 51
+        # 120 RPM / 12 = 10, +1 = 11 (above floor)
+        assert _auto_workers_for_rpm(120.0) == 11
+        # 300 RPM / 12 = 25, +1 = 26
+        assert _auto_workers_for_rpm(300.0) == 26
 
 
 # ── Report writers (Step 7) ──────────────────────────────────────────────────
@@ -707,7 +724,7 @@ class TestReportWriters:
         args = _ap.Namespace(
             mode="capacity", avg_input_tokens=100, avg_output_tokens=50,
             max_input_tokens=None, max_output_tokens=None, seed=42,
-            steady_state_minutes=2,
+            steady_state_minutes=2, start_rpm=100, workers=None,
         )
         provider = _make_provider()
         model_cfg = ModelConfig(name="testm", profile="x")
@@ -757,7 +774,10 @@ class TestReportWriters:
             stage_0_headers={"x-litellm-key-rpm-limit": "60"},
             stages=[stage],
         )
-        args = _ap.Namespace(mode="probe", max_context=4000)
+        args = _ap.Namespace(
+            mode="probe", max_context=4000,
+            stage1_workers=200, stage2_workers=200, saturation_rpm=60000.0,
+        )
         provider = _make_provider()
         model_cfg = ModelConfig(name="testm", profile="x")
         _write_probe_summary_md(
