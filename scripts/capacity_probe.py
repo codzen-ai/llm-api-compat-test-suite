@@ -234,6 +234,8 @@ RPM_BODY_KEYWORDS = (
     "requests per minute",
     "rpm",
     "request rate",
+    "request limit",             # aliyun dashscope: "exceeded your current request limit"
+    "exceeded your current request",
     "too many requests",
 )
 """Substrings searched (case-insensitive) in 429 error bodies to identify
