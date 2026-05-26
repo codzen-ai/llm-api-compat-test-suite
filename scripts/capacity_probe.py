@@ -234,7 +234,8 @@ RPM_BODY_KEYWORDS = (
     "requests per minute",
     "rpm",
     "request rate",
-    "request limit",             # aliyun dashscope: "exceeded your current request limit"
+    # aliyun dashscope: "exceeded your current request limit"
+    "request limit",
     "exceeded your current request",
     "too many requests",
 )
@@ -251,6 +252,18 @@ TPM_BODY_KEYWORDS = (
 )
 """Substrings searched (case-insensitive) in 429 error bodies to identify
 TPM-triggered limits when Tier 1/2 don't yield a match."""
+
+QUOTA_BODY_KEYWORDS = (
+    "exceeded your current quota",   # aliyun dashscope: account-level cap
+    "check your plan and billing",
+    "insufficient_quota",            # openai
+    "billing",
+    "quota exceeded",
+)
+"""Substrings searched (case-insensitive) for *account-level* quota
+exhaustion — these 429s mean the test account ran out of budget, NOT
+that the service has a low TPM/RPM. Mixing them with rate-limit 429s
+would give a misleading capacity reading."""
 
 
 def _tier1_rate_limit_type(headers: dict[str, str]) -> str | None:
@@ -293,8 +306,9 @@ def _is_zero(value: str) -> bool:
 def _tier3_body_keywords(body: dict[str, Any] | str | None) -> str | None:
     """Substring match against ``error.message`` (or raw body text).
 
-    Returns the first match; if both RPM and TPM keywords appear, RPM wins
-    because providers tend to put the triggering limit type first.
+    Quota wins first (account-level — meaningless for capacity); then
+    RPM beats TPM if both keyword sets fire (providers tend to put the
+    triggering limit type first).
     """
     if body is None:
         return None
@@ -308,6 +322,9 @@ def _tier3_body_keywords(body: dict[str, Any] | str | None) -> str | None:
     else:
         text = body
     text_lower = text.lower()
+    for kw in QUOTA_BODY_KEYWORDS:
+        if kw in text_lower:
+            return "429_quota"
     for kw in RPM_BODY_KEYWORDS:
         if kw in text_lower:
             return "429_rpm"
@@ -780,6 +797,7 @@ async def _run_stage(
         f"{counts.get('ok', 0)} ok, "
         f"{counts.get('429_rpm', 0)} rpm-429, "
         f"{counts.get('429_tpm', 0)} tpm-429, "
+        f"{counts.get('429_quota', 0)} quota-429, "
         f"{counts.get('429_unclassified', 0)} 429-unclassified"
     )
     CONSOLE.print(
@@ -912,6 +930,49 @@ def _format_headers_table(headers: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+QUOTA_DOMINANT_PCT = 30
+"""When ≥ this % of a stage's 429s are account-quota errors, the headline
+throughput becomes meaningless and we surface a prominent caveat."""
+
+
+def _build_probe_caveats(outcome: ProbeOutcome) -> list[str]:
+    """Caveats for the probe summary — the most common silent failure
+    modes are (a) never triggering 429 (client-bound), (b) account
+    quota exhaustion masquerading as rate-limit 429s, and (c) TPM
+    bounded by RPM not by a true TPM ceiling."""
+    caveats: list[str] = []
+    for s in outcome.stages:
+        if not any(c.startswith("429") for c in s.class_counts):
+            caveats.append(
+                f"- **{s.stage}** ran for {s.elapsed_sec:.0f}s without "
+                "triggering any 429. The measured rate is a **lower bound** "
+                "(client concurrency was the bottleneck, not the server). "
+                "True ceiling may be higher — re-run with more workers or "
+                "a higher `--max-context` to push harder."
+            )
+        quota_count = s.class_counts.get("429_quota", 0)
+        total_429 = sum(v for k, v in s.class_counts.items()
+                        if k.startswith("429"))
+        if quota_count > 0 and total_429 > 0:
+            quota_pct = quota_count / total_429 * 100
+            if quota_pct >= QUOTA_DOMINANT_PCT:
+                caveats.append(
+                    f"- **⚠ {s.stage} quota exhaustion**: "
+                    f"{quota_count}/{total_429} ({quota_pct:.0f}%) of 429s "
+                    "are account-quota errors (not rate limits). The "
+                    "**measured throughput is meaningless** for capacity "
+                    "planning — top up the account or use a key with "
+                    "higher quota and re-run."
+                )
+    if outcome.tpm_source == "bounded_by_rpm":
+        caveats.append(
+            "- **TPM ceiling**: only RPM-triggered 429s were observed; TPM "
+            "is bounded *below* by the measured value but the true ceiling "
+            "may be much higher (or the provider may not enforce TPM at all)."
+        )
+    return caveats
+
+
 def _write_probe_summary_md(
     run_dir: Path,
     args: argparse.Namespace,
@@ -937,23 +998,7 @@ def _write_probe_summary_md(
         tpm_str = f"**{outcome.tpm_limit:,.0f}**"
 
     # Caveat banner — most common pitfall on a probe is "I never hit 429"
-    caveats: list[str] = []
-    for s in outcome.stages:
-        had_429 = any(c.startswith("429") for c in s.class_counts)
-        if not had_429:
-            caveats.append(
-                f"- **{s.stage}** ran for {s.elapsed_sec:.0f}s without "
-                "triggering any 429. The measured rate is a **lower bound** "
-                "(client concurrency was the bottleneck, not the server). "
-                "True ceiling may be higher — re-run with more workers or "
-                "a higher `--max-context` to push harder."
-            )
-    if outcome.tpm_source == "bounded_by_rpm":
-        caveats.append(
-            "- **TPM ceiling**: only RPM-triggered 429s were observed; TPM "
-            "is bounded *below* by the measured value but the true ceiling "
-            "may be much higher (or the provider may not enforce TPM at all)."
-        )
+    caveats = _build_probe_caveats(outcome)
 
     lines = [
         "# Capacity Probe Report (probe mode)",
@@ -989,8 +1034,8 @@ def _write_probe_summary_md(
             "## Stage breakdown",
             "",
             "| Stage | Duration | Requests | OK | 429 RPM | 429 TPM | "
-            "Unclassified | Measured RPM | Measured TPM |",
-            "|---|---|---|---|---|---|---|---|---|",
+            "429 Quota | Unclassified | Measured RPM | Measured TPM |",
+            "|---|---|---|---|---|---|---|---|---|---|",
         ])
         for s in outcome.stages:
             c = s.class_counts
@@ -998,6 +1043,7 @@ def _write_probe_summary_md(
                 f"| {s.stage} | {s.elapsed_sec:.0f}s | "
                 f"{len(s.records)} | {c.get('ok', 0)} | "
                 f"{c.get('429_rpm', 0)} | {c.get('429_tpm', 0)} | "
+                f"{c.get('429_quota', 0)} | "
                 f"{c.get('429_unclassified', 0)} | "
                 f"{s.measured_rpm:.1f} | {s.measured_tpm:,.0f} |"
             )
